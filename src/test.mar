@@ -1,0 +1,3 @@
+foo = 123
+bar = foo + 1
+ret bar
