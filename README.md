@@ -20,10 +20,9 @@ fn my_func n m
     # iter from `foo` to 8
     for foo -> 8
         n += 1
-    # from 0 to n (inclusive), via index `i` 
+    # from 0 to n (inclusive), via index `i`
     for 0 => n i
-        say max i / 2, (max 3 + m, n)  # 1. syntax variant (not decided yet)
-        say(max(i / 2, max(3 + m, n))) # 2. syntax variant (not decided yet)
+        say(max(i / 2, max(3 + m, n))) # prints max
 
     if foo == 0
         0
@@ -49,5 +48,25 @@ max # max of 2 args
 20 -42
 ```
 ### Notes
-- `algos.rs` file contains all algorithms written in rust
-used as reference
+- `algos.rs` contains all algorithms written in rust for reference
+- `test.mar` contains basic test marathon code
+### Todo
+- finish expressions
+    - To `->`
+    - ToEq `=>`
+    - Paren `()`
+- finish statements
+    - `for` loop
+    - `while` loop
+    - `if/else`
+- built-in functions
+    - `say`
+    - `max`
+- function calls `my_func()`
+    - function arguments `my_func(a, b)`
+- operation precendence order
+- interpret and run code
+    - execute line by line with correct operation order
+    - store local variables values in `HashMap<String, StmtIdx>`
+- might need other representation like `IR` instead of `AST` for exec
+- fix and rewrite parser

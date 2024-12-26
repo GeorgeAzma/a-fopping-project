@@ -1,3 +1,7 @@
-foo = 123
-bar = foo + 1
-ret bar
+fn foo
+    ret a
+fn bar
+    ret b
+
+fn baz
+    ret c

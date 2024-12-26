@@ -1,3 +1,8 @@
+use std::{
+    fmt::{Debug, Display},
+    str::Chars,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tok {
     // statements
@@ -11,264 +16,278 @@ pub enum Tok {
     To,
     ToEq,
     // ops
+    // Not,
+    Eq,
+    Le,
+    Ge,
     Add,
     Sub,
     Div,
     Mul,
     Mod,
-    Eq,
-    // assignment ops
+    // ops (cond, assign)
+    Neq,
+    EqEq,
+    Leq,
+    Geq,
     AddEq,
     SubEq,
     DivEq,
     MulEq,
     ModEq,
-    // cond ops
-    EqEq,
-    NotEq,
-    Less,
-    Greater,
-    Leq,
-    Geq,
     // other
     OpenParen,
     CloseParen,
     Comma,
     Quote,
+    Comment,
+    Space,
     Newline,
     Ident,
-    Indent,
     Num,
+    Unk,
+    End,
+}
+
+impl Display for Tok {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Tok::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                If => "if",
+                Else => "else",
+                While => "while",
+                For => "for",
+                Fn => "fn",
+                Ret => "ret",
+                To => "->",
+                ToEq => "=>",
+                Eq => "=",
+                Le => "<",
+                Ge => ">",
+                Add => "+",
+                Sub => "-",
+                Div => "/",
+                Mul => "*",
+                Mod => "%",
+                Neq => "!=",
+                EqEq => "==",
+                Leq => "<=",
+                Geq => ">=",
+                AddEq => "+=",
+                SubEq => "-=",
+                DivEq => "/=",
+                MulEq => "*=",
+                ModEq => "%=",
+                OpenParen => "(",
+                CloseParen => ")",
+                Comma => ",",
+                Quote => "\"",
+                Comment => "#",
+                Space => " ",
+                Newline => "\n",
+                Ident => "",
+                Num => "",
+                Unk => "",
+                End => "",
+            }
+        )
+    }
 }
 
 impl Tok {
-    pub fn is_stmt(&self) -> bool {
+    pub fn is_op(&self) -> bool {
+        use Tok::*;
         matches!(
             self,
-            Tok::If | Tok::Else | Tok::While | Tok::For | Tok::Fn | Tok::Ret
+            To | Add
+                | Sub
+                | Div
+                | Mul
+                | Mod
+                | Le
+                | Ge
+                | Eq
+                | ToEq
+                | AddEq
+                | SubEq
+                | DivEq
+                | MulEq
+                | ModEq
+                | EqEq
+                | Neq
+                | Leq
+                | Geq
         )
     }
-
-    pub fn as_op(&self) -> Option<Self> {
-        match self {
-            Tok::Add
-            | Tok::Sub
-            | Tok::Div
-            | Tok::Mul
-            | Tok::Mod
-            | Tok::Eq
-            | Tok::AddEq
-            | Tok::SubEq
-            | Tok::DivEq
-            | Tok::MulEq
-            | Tok::ModEq
-            | Tok::EqEq
-            | Tok::Greater
-            | Tok::Less
-            | Tok::Leq
-            | Tok::Geq => Some(*self),
-            _ => None,
-        }
-    }
 }
 
-#[derive(Clone)]
-pub enum TokenData {
-    Num(i64),
-    Ident(String),
-    Indent(u32),
-    None,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Token {
     pub ty: Tok,
-    pub data: TokenData,
-    pub line: usize,
-    pub start: usize,
-    #[allow(unused)]
-    pub end: usize,
+    pub len: usize,
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}({})", self.ty, self.len)
+    }
 }
 
 impl Token {
-    pub fn num(&self) -> i64 {
-        match &self.data {
-            TokenData::Num(n) => *n,
-            _ => panic!("Token is not a number"),
-        }
-    }
-
-    pub fn ident(&self) -> &str {
-        match &self.data {
-            TokenData::Ident(s) => s,
-            _ => panic!("Token is not an identifier"),
-        }
-    }
-
-    pub fn indent(&self) -> u32 {
-        match &self.data {
-            TokenData::Indent(i) => *i,
-            _ => panic!("Token is not an indent"),
-        }
+    pub fn new(ty: Tok, len: usize) -> Self {
+        Self { ty, len }
     }
 }
 
-impl std::fmt::Debug for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}:{}", self.line, self.start)
-    }
+#[derive(Clone)]
+pub struct Lexer<'a> {
+    chars: Chars<'a>,
 }
 
-pub struct Lexer;
+impl<'a> Lexer<'a> {
+    pub fn new(code: &'a str) -> Self {
+        Self {
+            chars: code.chars(),
+        }
+    }
 
-impl Lexer {
-    pub fn tokenize(code: &str) -> Vec<Token> {
-        let mut toks: Vec<Token> = Vec::new();
-        let lines = code.lines();
-        for (line_idx, line) in lines.enumerate() {
-            let mut chars = line.chars().peekable();
-            let mut ch_idx = 0;
-            let mut spaces = 0;
-            while let Some(' ') = chars.peek() {
-                chars.next();
-                spaces += 1;
+    pub fn iter(&'a mut self) -> impl Iterator<Item = Token> + 'a {
+        std::iter::from_fn(|| {
+            let next = self.next_tok();
+            if next.ty != Tok::End {
+                Some(next)
+            } else {
+                None
             }
-            if spaces >= 4 {
-                toks.push(Token {
-                    ty: Tok::Indent,
-                    data: TokenData::Indent(spaces / 4),
-                    line: line_idx,
-                    start: ch_idx,
-                    end: ch_idx + spaces as usize / 4 * 4,
-                });
+        })
+    }
+
+    pub fn next_tok(&mut self) -> Token {
+        let c = self.chars.next();
+        if c.is_none() {
+            return Token::new(Tok::End, 0);
+        }
+        let c = c.unwrap();
+        match (c, self.chars.clone().next()) {
+            (' ', _) => {
+                let mut spaces = 1;
+                while let Some(' ') = self.chars.clone().next() {
+                    self.chars.next();
+                    spaces += 1;
+                }
+                Token::new(Tok::Space, spaces)
             }
-            while let Some(ch) = chars.next() {
-                let add_tok = |toks: &mut Vec<Token>, ty: Tok, tok_len: usize| {
-                    toks.push(Token {
-                        ty,
-                        data: TokenData::None,
-                        line: line_idx,
-                        start: ch_idx,
-                        end: ch_idx + tok_len,
-                    });
-                };
-                match (ch, chars.peek()) {
-                    (' ', _) => continue,
-                    ('+', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::AddEq, 2);
-                    }
-                    ('-', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::SubEq, 2);
-                    }
-                    ('*', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::MulEq, 2);
-                    }
-                    ('/', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::DivEq, 2);
-                    }
-                    ('%', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::ModEq, 2);
-                    }
-                    ('=', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::EqEq, 2);
-                    }
-                    ('!', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::NotEq, 2);
-                    }
-                    ('<', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::Leq, 2);
-                    }
-                    ('>', Some('=')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::Geq, 2);
-                    }
-                    ('-', Some('>')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::To, 2);
-                    }
-                    ('=', Some('>')) => {
-                        chars.next();
-                        add_tok(&mut toks, Tok::ToEq, 2);
-                    }
-                    ('+', _) => add_tok(&mut toks, Tok::Add, 1),
-                    ('-', _) => add_tok(&mut toks, Tok::Sub, 1),
-                    ('*', _) => add_tok(&mut toks, Tok::Mul, 1),
-                    ('/', _) => add_tok(&mut toks, Tok::Div, 1),
-                    ('%', _) => add_tok(&mut toks, Tok::Mod, 1),
-                    ('=', _) => add_tok(&mut toks, Tok::Eq, 1),
-                    ('<', _) => add_tok(&mut toks, Tok::Less, 1),
-                    ('>', _) => add_tok(&mut toks, Tok::Greater, 1),
-                    ('(', _) => add_tok(&mut toks, Tok::OpenParen, 1),
-                    (')', _) => add_tok(&mut toks, Tok::CloseParen, 1),
-                    (',', _) => add_tok(&mut toks, Tok::Comma, 1),
-                    ('"', _) => add_tok(&mut toks, Tok::Quote, 1),
-                    _ => {
-                        let mut ident = String::new();
-                        ident.push(ch);
-                        if ch.is_numeric() {
-                            while let Some(&next_ch) = chars.peek() {
-                                if next_ch.is_numeric() {
-                                    ident.push(next_ch);
-                                    chars.next();
-                                } else {
-                                    break;
-                                }
-                            }
-                            toks.push(Token {
-                                ty: Tok::Num,
-                                data: TokenData::Num(ident.parse().unwrap()),
-                                line: line_idx,
-                                start: ch_idx,
-                                end: ch_idx + ident.len(),
-                            });
+            ('\r', Some('\n')) | ('\n', Some('\r')) => {
+                self.chars.next();
+                Token::new(Tok::Newline, 2)
+            }
+            ('\n', _) => Token::new(Tok::Newline, 1),
+            ('+', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::AddEq, 2)
+            }
+            ('-', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::SubEq, 2)
+            }
+            ('*', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::MulEq, 2)
+            }
+            ('/', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::DivEq, 2)
+            }
+            ('%', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::ModEq, 2)
+            }
+            ('=', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::EqEq, 2)
+            }
+            ('!', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::Neq, 2)
+            }
+            ('<', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::Leq, 2)
+            }
+            ('>', Some('=')) => {
+                self.chars.next();
+                Token::new(Tok::Geq, 2)
+            }
+            ('-', Some('>')) => {
+                self.chars.next();
+                Token::new(Tok::To, 2)
+            }
+            ('=', Some('>')) => {
+                self.chars.next();
+                Token::new(Tok::ToEq, 2)
+            }
+            ('+', _) => Token::new(Tok::Add, 1),
+            ('-', _) => Token::new(Tok::Sub, 1),
+            ('*', _) => Token::new(Tok::Mul, 1),
+            ('/', _) => Token::new(Tok::Div, 1),
+            ('%', _) => Token::new(Tok::Mod, 1),
+            ('=', _) => Token::new(Tok::Eq, 1),
+            ('<', _) => Token::new(Tok::Le, 1),
+            ('>', _) => Token::new(Tok::Ge, 1),
+            ('(', _) => Token::new(Tok::OpenParen, 1),
+            (')', _) => Token::new(Tok::CloseParen, 1),
+            (',', _) => Token::new(Tok::Comma, 1),
+            ('"', _) => Token::new(Tok::Quote, 1),
+            ('#', _) => Token::new(Tok::Comment, 1),
+            _ => {
+                if c.is_numeric() {
+                    let mut num_len = 1;
+                    while let Some(next_ch) = self.chars.clone().next() {
+                        if next_ch.is_numeric() {
+                            num_len += 1;
+                            self.chars.next();
                         } else {
-                            while let Some(&next_ch) = chars.peek() {
-                                if next_ch.is_alphanumeric() || next_ch == '_' {
-                                    ident.push(next_ch);
-                                    chars.next();
-                                } else {
-                                    break;
-                                }
-                            }
-                            match ident.as_str() {
-                                "if" => add_tok(&mut toks, Tok::If, ident.len()),
-                                "else" => add_tok(&mut toks, Tok::Else, ident.len()),
-                                "while" => add_tok(&mut toks, Tok::While, ident.len()),
-                                "for" => add_tok(&mut toks, Tok::For, ident.len()),
-                                "fn" => add_tok(&mut toks, Tok::Fn, ident.len()),
-                                "ret" => add_tok(&mut toks, Tok::Ret, ident.len()),
-                                _ => {
-                                    let ident_len = ident.len();
-                                    toks.push(Token {
-                                        ty: Tok::Ident,
-                                        data: TokenData::Ident(ident),
-                                        line: line_idx,
-                                        start: ch_idx,
-                                        end: ch_idx + ident_len,
-                                    });
-                                }
-                            }
+                            break;
                         }
                     }
+                    Token::new(Tok::Num, num_len)
+                } else {
+                    let mut ident = String::from(c);
+
+                    while let Some(next_ch) = self.chars.clone().next() {
+                        if next_ch.is_alphanumeric() || next_ch == '_' {
+                            ident.push(next_ch);
+                            self.chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    match ident.as_str() {
+                        "if" => Token::new(Tok::If, ident.len()),
+                        "else" => Token::new(Tok::Else, ident.len()),
+                        "while" => Token::new(Tok::While, ident.len()),
+                        "for" => Token::new(Tok::For, ident.len()),
+                        "fn" => Token::new(Tok::Fn, ident.len()),
+                        "ret" => Token::new(Tok::Ret, ident.len()),
+                        str if !str.is_empty() => Token::new(Tok::Ident, ident.len()),
+                        _ => Token::new(Tok::Unk, ident.len()),
+                    }
                 }
-                ch_idx += 1;
             }
-            toks.push(Token {
-                ty: Tok::Newline,
-                data: TokenData::None,
-                line: line_idx,
-                start: ch_idx,
-                end: ch_idx,
-            });
         }
-        toks
+    }
+}
+
+impl Debug for Lexer<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?}",
+            self.clone().iter().map(|t| t.ty).collect::<Vec<_>>()
+        )
     }
 }
