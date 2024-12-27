@@ -1,7 +1,2 @@
-fn foo
-    ret a
-fn bar
-    ret b
-
-fn baz
-    ret c
+for 0 => 2 i
+    do(i + 1, i)
