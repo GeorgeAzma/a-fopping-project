@@ -6,6 +6,7 @@ pub type ExprIdx = usize;
 #[derive(Debug, Clone)]
 pub enum Expr {
     Num(i64),
+    Str(String),
     Id(String),
     Paren(Vec<ExprIdx>),       // ( expr )
     Op(ExprIdx, Tok, ExprIdx), // expr + op + expr
@@ -63,7 +64,7 @@ impl<'a> Parser<'a> {
         slf
     }
 
-    fn intern(&mut self, str: String) -> StmtIdx {
+    fn intern_id(&mut self, str: String) -> StmtIdx {
         use std::collections::hash_map::Entry;
         let self_ptr = std::ptr::from_mut(self);
         match self.intern_map.entry(str.clone()) {
@@ -152,7 +153,7 @@ impl<'a> Parser<'a> {
     fn parse_id(&mut self) -> Option<ExprIdx> {
         if self.tok() == Tok::Id {
             let id = self.tok_id().to_string();
-            let id = self.intern(id);
+            let id = self.intern_id(id);
             self.next_tok();
             Some(id)
         } else {
@@ -202,6 +203,10 @@ impl<'a> Parser<'a> {
             }
         } else if self.skip(Tok::OpenParen) {
             self.parse_paren()
+        } else if self.tok() == Tok::Str {
+            let tok_str = self.tok_str().to_string();
+            self.next_tok();
+            self.add_expr(Expr::Str(tok_str))
         } else {
             expected!(self, "expr")
         }
@@ -240,6 +245,7 @@ impl<'a> Parser<'a> {
     fn parse_if(&mut self) -> StmtIdx {
         let cond = self.parse_expr();
         let block = self.parse_block();
+        while self.skip(Tok::Indent) || self.skip(Tok::Newline) {}
         if self.skip(Tok::Else) {
             if self.skip(Tok::If) {
                 let else_if_block = self.parse_if();
@@ -336,6 +342,7 @@ impl std::fmt::Debug for Parser<'_> {
                     }
                     write!(f, ")")
                 }
+                Expr::Str(str) => write!(f, "\"{str}\""),
             }
         }
         fn write_expr(

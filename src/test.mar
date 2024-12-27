@@ -1,2 +1,10 @@
-for 0 => 2 i
-    do(i + 1, i)
+fn fib n
+    a = 0
+    b = 1
+    for 0 -> n
+        b += a
+        a = b - a
+    if a == 42
+        ret a
+    else
+        ret say("you've failed to reach meaning of life")

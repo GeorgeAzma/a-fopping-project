@@ -39,8 +39,8 @@ pub enum Tok {
     OpenParen,
     CloseParen,
     Comma,
-    Quote,
     Num,
+    Str,
     Id,
     Newline,
     Indent,
@@ -83,8 +83,8 @@ impl Display for Tok {
                 OpenParen => "(",
                 CloseParen => ")",
                 Comma => ",",
-                Quote => "\"",
                 Num => "<num>",
+                Str => "<str>",
                 Id => "<id>",
                 Newline => "\\n",
                 Indent => "<indent>",
@@ -246,7 +246,19 @@ impl<'a> Lexer<'a> {
                     ('(', _) => Token::new(Tok::OpenParen, self.pos, self.pos + 1),
                     (')', _) => Token::new(Tok::CloseParen, self.pos, self.pos + 1),
                     (',', _) => Token::new(Tok::Comma, self.pos, self.pos + 1),
-                    ('"', _) => Token::new(Tok::Quote, self.pos, self.pos + 1),
+                    ('"', _) => {
+                        let mut i = 0;
+                        while let Some(c) = self.chars.next() {
+                            if c == '"' {
+                                break;
+                            }
+                            i += 1;
+                        }
+                        self.pos += 1; // exclude quote
+                        let tok = Token::new(Tok::Str, self.pos, self.pos + i);
+                        self.pos += 1; // exclude quote
+                        tok
+                    }
                     ('#', _) => {
                         while let Some(c) = self.chars.clone().next() {
                             if c == '\n' {

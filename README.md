@@ -49,7 +49,7 @@ NUM: (-)?[0-9]
 ```
 ### Exprs and Stmts `handled by parser`
 ``` py
-expr: NUM | ID | paren | op | fn_call
+expr: NUM | ID | str | paren | op | fn_call
 stmt: expr NL | ret | block | while | for | if | fn
 ```
 ### Helpers
@@ -57,6 +57,7 @@ stmt: expr NL | ret | block | while | for | if | fn
 op: expr OP expr
 fn_call: ID '(' (expr (',' expr)*)? ')'
 paren: '(' expr ')'
+str: '"' expr '"'
 while: expr block
 for: expr RANGE expr (ID)? block # only handles indexed num ranges
 if: expr block (else (block | if))? 
