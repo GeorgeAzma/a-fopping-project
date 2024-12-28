@@ -294,10 +294,12 @@ impl<'a> Lexer<'a> {
                             let mut is_flt = false;
                             while let Some(next_ch) = self.chars.clone().next() {
                                 if next_ch.is_numeric() || next_ch == '.' {
-                                    if is_flt && next_ch == '.' {
-                                        panic!("float can only have single dot (.)");
+                                    if next_ch == '.' {
+                                        if is_flt {
+                                            panic!("float can only have single dot (.)");
+                                        }
+                                        is_flt = true;
                                     }
-                                    is_flt = true;
                                     num_len += 1;
                                     self.chars.next();
                                 } else {

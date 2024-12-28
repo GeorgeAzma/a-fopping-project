@@ -5,5 +5,15 @@ fn fib n
         b += a
         a = b - a
     ret a
-res = fib(6)
-say(res)
+say(fib(6))
+
+fn is_prime n
+    divs = 0
+    for 1 => n i
+        if (n % i) == 0
+            divs += 1
+            if divs > 2
+                ret 0
+    ret divs == 2
+
+say(is_prime(17))

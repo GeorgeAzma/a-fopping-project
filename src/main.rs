@@ -12,8 +12,7 @@ fn main() {
 
     let code = include_str!("test.mar");
     let ast = Parser::new(code);
+    println!("{ast:?}");
     let mut int = Interpreter::new(&ast);
     int.interpret();
-
-    // println!("{ast:?}");
 }

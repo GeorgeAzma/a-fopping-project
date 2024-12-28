@@ -242,7 +242,6 @@ impl<'a> Parser<'a> {
         if self.tok() != Tok::Indent {
             expected!(self, "indent or implicit 0 indent from lexer");
         }
-
         let block = self.add_stmt(Stmt::Block(vec![]));
         self.block_stacks.push(block);
         let block_indents = self.cur_tok.len();
@@ -270,7 +269,6 @@ impl<'a> Parser<'a> {
     fn if_(&mut self) -> StmtIdx {
         let cond = self.expr();
         let block = self.block();
-        while self.skip(Tok::Indent) || self.skip(Tok::Newline) {}
         if self.skip(Tok::Else) {
             if self.skip(Tok::If) {
                 let else_if_block = self.if_();
@@ -313,6 +311,7 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> Option<StmtIdx> {
+        while self.skip(Tok::Indent) | self.skip(Tok::Newline) {}
         (!self.skip(Tok::Indent) && !self.skip(Tok::Newline) && !self.skip(Tok::End)).then(|| {
             (self.skip(Tok::Ret).then(|| self.ret()))
                 .or_else(|| self.skip(Tok::While).then(|| self.while_()))
