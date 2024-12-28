@@ -130,20 +130,26 @@ impl<'a> Interpreter<'a> {
     }
 
     fn get_or_add_local(&mut self, id_expr: ExprIdx, val: Value) -> Value {
-        let len = self.env_stack.len();
-        for scope in self.env_stack.iter_mut().rev() {
-            if let Some(value) = scope.get_mut(&id_expr) {
-                return value.clone();
-            }
+        if let Some(local) = self.find_local(id_expr) {
+            local.clone()
+        } else {
+            self.add_local(id_expr, val.clone());
+            val
         }
-        self.env_stack[len - 1]
-            .insert(id_expr, val.clone())
-            .unwrap_or(val)
     }
 
     fn rem_local(&mut self, id_expr: ExprIdx) {
         let len = self.env_stack.len();
         self.env_stack[len - 1].remove(&id_expr);
+    }
+
+    fn find_local(&mut self, id_expr: StmtIdx) -> Option<&mut Value> {
+        for scope in self.env_stack.iter_mut().rev() {
+            if let Some(value) = scope.get_mut(&id_expr) {
+                return Some(value);
+            }
+        }
+        None
     }
 
     fn local(&mut self, id_expr: StmtIdx) -> &mut Value {
@@ -342,7 +348,8 @@ impl<'a> Interpreter<'a> {
                         To => to(&lhs, &rhs),
                         ToEq => to_eq(&lhs, &rhs),
                         Eq => {
-                            self.add_local(*lhs_idx, rhs.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = rhs.clone();
                             rhs
                         }
                         Le => le(&lhs, &rhs),
@@ -358,27 +365,32 @@ impl<'a> Interpreter<'a> {
                         Geq => geq(&lhs, &rhs),
                         AddEq => {
                             let res = add(&lhs, &rhs);
-                            self.add_local(*lhs_idx, res.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = res.clone();
                             res
                         }
                         SubEq => {
                             let res = sub(&lhs, &rhs);
-                            self.add_local(*lhs_idx, res.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = res.clone();
                             res
                         }
                         DivEq => {
                             let res = div(&lhs, &rhs);
-                            self.add_local(*lhs_idx, res.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = res.clone();
                             res
                         }
                         MulEq => {
                             let res = mul(&lhs, &rhs);
-                            self.add_local(*lhs_idx, res.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = res.clone();
                             res
                         }
                         ModEq => {
                             let res = m0d(&lhs, &rhs);
-                            self.add_local(*lhs_idx, res.clone());
+                            let lhs = self.local(*lhs_idx);
+                            *lhs = res.clone();
                             res
                         }
                     }

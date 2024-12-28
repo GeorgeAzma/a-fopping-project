@@ -5,5 +5,5 @@ fn fib n
         b += a
         a = b - a
     ret a
-res = fib(4)
+res = fib(6)
 say(res)
