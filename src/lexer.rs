@@ -125,13 +125,13 @@ impl Tok {
         use Tok::*;
         match self {
             If | Else | While | For | Fn | Ret | Newline | Indent | Unk | End | Id | Str | Num => 0,
-            Add | Sub => 1,
+            OpenParen | CloseParen => 1,
             Mul | Div | Mod => 2,
-            To | ToEq => 3,
-            Le | Leq | Ge | Geq => 4,
-            EqEq | Neq => 5,
-            Eq | AddEq | SubEq | DivEq | MulEq | ModEq => 6,
-            OpenParen | CloseParen => 7,
+            Add | Sub => 3,
+            To | ToEq => 4,
+            Le | Leq | Ge | Geq => 5,
+            EqEq | Neq => 6,
+            Eq | AddEq | SubEq | DivEq | MulEq | ModEq => 7,
             Comma => 8,
         }
     }

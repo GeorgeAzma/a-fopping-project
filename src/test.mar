@@ -1,7 +1,12 @@
-b += a + n + n + n * n
-# 0. b += a + n + n + n * n
-# 1. (n * n) -> b += a + n + n + 0
-# 2. (a + n) -> b += 1 + n + 0
-# 3. (1 + n) -> b += 2 + 0
-# 4. (2 + 0) -> b += 3
-# 5. (b += 3) -> 4
+fn fib n
+    a = 0
+    b = 1
+    for 0 -> n i # => is inclusive
+        b += a + (n + n) + n * n # b += a
+        a = identity(b) - a
+    if a == 42
+        ret a
+    else if a != 42
+        say("you've failed to reach meaning of life")
+    else
+        ret b

@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
             column: 0,
         };
         slf.next_tok();
-        slf.parse_block();
+        slf.block();
         slf
     }
 
@@ -106,12 +106,6 @@ impl<'a> Parser<'a> {
         } else {
             self.column += next_tok.start - self.pos;
         }
-        // println!(
-        //     "{:?} -> {:?} \x1b[2m|> {}\x1b[0m",
-        //     self.cur_tok,
-        //     next_tok,
-        //     crate::debug::backtrace(1)
-        // );
         self.cur_tok = next_tok;
         self.tok()
     }
@@ -139,7 +133,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_num(&mut self) -> Option<ExprIdx> {
+    fn num(&mut self) -> Option<ExprIdx> {
         if self.tok() == Tok::Num {
             let num = self.tok_num();
             let num = self.add_expr(Expr::Num(num));
@@ -150,12 +144,33 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_id(&mut self) -> Option<ExprIdx> {
+    fn id(&mut self) -> Option<ExprIdx> {
         if self.tok() == Tok::Id {
             let id = self.tok_id().to_string();
             let id = self.intern_id(id);
             self.next_tok();
             Some(id)
+        } else {
+            None
+        }
+    }
+
+    fn str(&mut self) -> Option<ExprIdx> {
+        if self.tok() == Tok::Str {
+            let str = self.tok_str().to_string();
+            let str = self.add_expr(Expr::Str(str));
+            self.next_tok();
+            Some(str)
+        } else {
+            None
+        }
+    }
+
+    fn op(&mut self, lhs: ExprIdx) -> Option<usize> {
+        if let Some(op) = self.skip_if(Tok::is_op) {
+            let rhs = self.expr();
+            let op = self.add_expr(Expr::Op(lhs, op, rhs));
+            Some(op)
         } else {
             None
         }
@@ -170,49 +185,39 @@ impl<'a> Parser<'a> {
         self.add_stmt(Stmt::Expr(expr))
     }
 
-    fn parse_paren(&mut self) -> ExprIdx {
-        let mut exprs = vec![];
-        loop {
-            if self.skip(Tok::CloseParen) {
-                break;
+    fn paren(&mut self) -> Option<ExprIdx> {
+        if self.skip(Tok::OpenParen) {
+            let mut exprs = vec![];
+            loop {
+                if self.skip(Tok::CloseParen) {
+                    break;
+                }
+                let expr = self.expr();
+                exprs.push(expr);
+                self.skip(Tok::Comma);
             }
-            let expr = self.parse_expr();
-            exprs.push(expr);
-            self.skip(Tok::Comma);
-        }
-        self.add_expr(Expr::Paren(exprs))
-    }
-
-    fn parse_expr(&mut self) -> ExprIdx {
-        if let Some(num) = self.parse_num() {
-            if let Some(op) = self.skip_if(Tok::is_op) {
-                let rhs = self.parse_expr();
-                self.add_expr(Expr::Op(num, op, rhs))
-            } else {
-                num
-            }
-        } else if let Some(id) = self.parse_id() {
-            if let Some(op) = self.skip_if(Tok::is_op) {
-                let rhs = self.parse_expr();
-                self.add_expr(Expr::Op(id, op, rhs))
-            } else if self.skip(Tok::OpenParen) {
-                let paren = self.parse_paren();
-                self.add_expr(Expr::FnCall(id, paren))
-            } else {
-                id
-            }
-        } else if self.skip(Tok::OpenParen) {
-            self.parse_paren()
-        } else if self.tok() == Tok::Str {
-            let tok_str = self.tok_str().to_string();
-            self.next_tok();
-            self.add_expr(Expr::Str(tok_str))
+            let paren = self.add_expr(Expr::Paren(exprs));
+            Some(paren)
         } else {
-            expected!(self, "expr")
+            None
         }
     }
 
-    fn parse_block(&mut self) -> StmtIdx {
+    fn expr(&mut self) -> ExprIdx {
+        self.str()
+            .or_else(|| self.paren())
+            .or_else(|| self.num())
+            .or_else(|| {
+                self.id().map(|id| {
+                    self.paren()
+                        .map_or(id, |paren| self.add_expr(Expr::FnCall(id, paren)))
+                })
+            })
+            .map(|expr| self.op(expr).unwrap_or(expr))
+            .unwrap_or_else(|| expected!(self, "expr"))
+    }
+
+    fn block(&mut self) -> StmtIdx {
         self.skip(Tok::Newline);
         if self.tok() != Tok::Indent {
             expected!(self, "indent or implicit 0 indent from lexer");
@@ -226,7 +231,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next_tok();
-            let stmt = self.parse_stmt();
+            let stmt = self.stmt();
             if let Some(stmt) = stmt {
                 self.add_stmt_to_block(stmt);
                 while self.skip(Tok::Newline) {
@@ -242,16 +247,16 @@ impl<'a> Parser<'a> {
         block
     }
 
-    fn parse_if(&mut self) -> StmtIdx {
-        let cond = self.parse_expr();
-        let block = self.parse_block();
+    fn if_(&mut self) -> StmtIdx {
+        let cond = self.expr();
+        let block = self.block();
         while self.skip(Tok::Indent) || self.skip(Tok::Newline) {}
         if self.skip(Tok::Else) {
             if self.skip(Tok::If) {
-                let else_if_block = self.parse_if();
+                let else_if_block = self.if_();
                 self.add_stmt(Stmt::If(cond, block, Some(else_if_block)))
             } else {
-                let else_block = self.parse_block();
+                let else_block = self.block();
                 self.add_stmt(Stmt::If(cond, block, Some(else_block)))
             }
         } else {
@@ -259,56 +264,43 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_ret(&mut self) -> StmtIdx {
-        let ret = self.parse_expr();
+    fn ret(&mut self) -> StmtIdx {
+        let ret = self.expr();
         self.add_stmt(Stmt::Ret(ret))
     }
 
-    fn parse_while(&mut self) -> StmtIdx {
-        let cond = self.parse_expr();
-        let block = self.parse_block();
+    fn while_(&mut self) -> StmtIdx {
+        let cond = self.expr();
+        let block = self.block();
         self.add_stmt(Stmt::While(cond, block))
     }
 
-    fn parse_for(&mut self) -> StmtIdx {
-        let range_op = self.parse_expr();
-        let idx = self.parse_id();
-        let block = self.parse_block();
+    fn for_(&mut self) -> StmtIdx {
+        let range_op = self.expr();
+        let idx = self.id();
+        let block = self.block();
         self.add_stmt(Stmt::For(range_op, idx, block))
     }
 
-    fn parse_fn(&mut self) -> StmtIdx {
-        let name = self
-            .parse_id()
-            .unwrap_or_else(|| expected!(self, "fn name"));
+    fn fn_(&mut self) -> StmtIdx {
+        let name = self.id().unwrap_or_else(|| expected!(self, "fn name"));
         let mut args = vec![];
-        while let Some(arg) = self.parse_id() {
+        while let Some(arg) = self.id() {
             args.push(arg);
         }
-        let block = self.parse_block();
+        let block = self.block();
         self.add_stmt(Stmt::Fn(name, args, block))
     }
 
-    fn parse_stmt(&mut self) -> Option<StmtIdx> {
-        if self.skip(Tok::Ret) {
-            Some(self.parse_ret())
-        } else if self.skip(Tok::While) {
-            Some(self.parse_while())
-        } else if self.skip(Tok::For) {
-            Some(self.parse_for())
-        } else if self.skip(Tok::If) {
-            Some(self.parse_if())
-        } else if self.skip(Tok::Fn) {
-            Some(self.parse_fn())
-        } else if self.skip(Tok::Indent) {
-            None
-        } else if self.skip(Tok::Newline) {
-            None
-        } else if self.skip(Tok::End) {
-            None
-        } else {
-            Some(self.parse_expr())
-        }
+    fn stmt(&mut self) -> Option<StmtIdx> {
+        (!self.skip(Tok::Indent) && !self.skip(Tok::Newline) && !self.skip(Tok::End)).then_some(
+            (self.skip(Tok::Ret).then(|| self.ret()))
+                .or_else(|| self.skip(Tok::While).then(|| self.while_()))
+                .or_else(|| self.skip(Tok::For).then(|| self.for_()))
+                .or_else(|| self.skip(Tok::If).then(|| self.if_()))
+                .or_else(|| self.skip(Tok::Fn).then(|| self.fn_()))
+                .unwrap_or_else(|| self.expr()),
+        )
     }
 }
 
@@ -320,14 +312,23 @@ impl std::fmt::Debug for Parser<'_> {
             parser: &'a Parser<'a>,
         }
         impl Writer<'_, '_> {
-            fn write_expr_no_idx(&mut self, expr: &Expr) -> std::fmt::Result {
+            fn write_expr_no_idx(&mut self, expr: &Expr, parent_prec: u8) -> std::fmt::Result {
                 match expr {
                     Expr::Num(i) => write!(self.f, "{i}"),
                     Expr::Id(id) => write!(self.f, "{id}"),
                     Expr::Op(lhs, op, rhs) => {
-                        self.write_expr(lhs)?;
-                        write!(self.f, " {} ", op.to_string())?;
-                        self.write_expr(rhs)
+                        let op_prec = op.precedence();
+                        let need_paren = op_prec < parent_prec;
+                        if need_paren {
+                            write!(self.f, "(")?;
+                        }
+                        self.write_expr_prec(lhs, op_prec)?;
+                        write!(self.f, " {op} ")?;
+                        self.write_expr_prec(rhs, op_prec)?;
+                        if need_paren {
+                            write!(self.f, ")")?;
+                        }
+                        Ok(())
                     }
                     Expr::FnCall(name, paren) => {
                         self.write_expr(name)?;
@@ -346,13 +347,21 @@ impl std::fmt::Debug for Parser<'_> {
                     Expr::Str(str) => write!(self.f, "\"{str}\""),
                 }
             }
+            fn write_expr_prec(&mut self, expr: &ExprIdx, prec: u8) -> std::fmt::Result {
+                let expr = if let Stmt::Expr(expr) = &self.parser.stmts[*expr] {
+                    expr
+                } else {
+                    panic!("expected expr, got: {:?}", self.parser.stmts[*expr]);
+                };
+                self.write_expr_no_idx(expr, prec)
+            }
             fn write_expr(&mut self, expr: &ExprIdx) -> std::fmt::Result {
                 let expr = if let Stmt::Expr(expr) = &self.parser.stmts[*expr] {
                     expr
                 } else {
                     panic!("expected expr, got: {:?}", self.parser.stmts[*expr]);
                 };
-                self.write_expr_no_idx(expr)
+                self.write_expr_no_idx(expr, 0)
             }
             fn write_block(&mut self, block: &StmtIdx, indent: usize) -> std::fmt::Result {
                 let stmts = if let Stmt::Block(block) = &self.parser.stmts[*block] {
@@ -374,7 +383,7 @@ impl std::fmt::Debug for Parser<'_> {
                 let stmt = &self.parser.stmts[*stmt_idx];
                 let indent_str = " ".repeat(indent * 2);
                 match stmt {
-                    Stmt::Expr(expr) => self.write_expr_no_idx(expr),
+                    Stmt::Expr(expr) => self.write_expr_no_idx(expr, 0),
                     Stmt::While(expr, block) => {
                         write!(self.f, "while ")?;
                         self.write_expr(expr)?;
