@@ -315,130 +315,119 @@ impl<'a> Parser<'a> {
 //////////////////////// DEBUG PRINT (IGNORE) ////////////////////////////
 impl std::fmt::Debug for Parser<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn write_expr_no_idx(
-            f: &mut std::fmt::Formatter<'_>,
-            parser: &Parser,
-            expr: &Expr,
-        ) -> std::fmt::Result {
-            match expr {
-                Expr::Num(i) => write!(f, "{i}"),
-                Expr::Id(id) => write!(f, "{id}"),
-                Expr::Op(lhs, op, rhs) => {
-                    write_expr(f, parser, lhs)?;
-                    write!(f, " {} ", op.to_string())?;
-                    write_expr(f, parser, rhs)
-                }
-                Expr::FnCall(name, paren) => {
-                    write_expr(f, parser, name)?;
-                    write_expr(f, parser, paren)
-                }
-                Expr::Paren(exprs) => {
-                    write!(f, "(")?;
-                    for expr in exprs {
-                        write_expr(f, parser, expr)?;
-                        if !std::ptr::eq(expr, &exprs[exprs.len() - 1]) {
-                            write!(f, ", ")?;
+        struct Writer<'a, 'b> {
+            f: &'a mut std::fmt::Formatter<'b>,
+            parser: &'a Parser<'a>,
+        }
+        impl Writer<'_, '_> {
+            fn write_expr_no_idx(&mut self, expr: &Expr) -> std::fmt::Result {
+                match expr {
+                    Expr::Num(i) => write!(self.f, "{i}"),
+                    Expr::Id(id) => write!(self.f, "{id}"),
+                    Expr::Op(lhs, op, rhs) => {
+                        self.write_expr(lhs)?;
+                        write!(self.f, " {} ", op.to_string())?;
+                        self.write_expr(rhs)
+                    }
+                    Expr::FnCall(name, paren) => {
+                        self.write_expr(name)?;
+                        self.write_expr(paren)
+                    }
+                    Expr::Paren(exprs) => {
+                        write!(self.f, "(")?;
+                        for expr in exprs {
+                            self.write_expr(expr)?;
+                            if !std::ptr::eq(expr, &exprs[exprs.len() - 1]) {
+                                write!(self.f, ", ")?;
+                            }
                         }
+                        write!(self.f, ")")
                     }
-                    write!(f, ")")
-                }
-                Expr::Str(str) => write!(f, "\"{str}\""),
-            }
-        }
-        fn write_expr(
-            f: &mut std::fmt::Formatter<'_>,
-            parser: &Parser,
-            expr: &ExprIdx,
-        ) -> std::fmt::Result {
-            let expr = if let Stmt::Expr(expr) = &parser.stmts[*expr] {
-                expr
-            } else {
-                panic!("expected expr, got: {:?}", parser.stmts[*expr]);
-            };
-            write_expr_no_idx(f, parser, expr)
-        }
-        fn write_block(
-            f: &mut std::fmt::Formatter<'_>,
-            parser: &Parser,
-            block: &StmtIdx,
-            indent: usize,
-        ) -> std::fmt::Result {
-            let stmts = if let Stmt::Block(block) = &parser.stmts[*block] {
-                block
-            } else {
-                panic!("expected block");
-            };
-            let indent_str = " ".repeat(indent * 2);
-            for stmt_idx in stmts {
-                write!(f, "{indent_str}")?;
-                write_stmt(f, parser, stmt_idx, indent)?;
-                if !std::ptr::eq(stmt_idx, &stmts[stmts.len() - 1]) {
-                    write!(f, "\n")?;
+                    Expr::Str(str) => write!(self.f, "\"{str}\""),
                 }
             }
-            Ok(())
-        }
-        fn write_stmt(
-            f: &mut std::fmt::Formatter<'_>,
-            parser: &Parser,
-            stmt_idx: &StmtIdx,
-            indent: usize,
-        ) -> std::fmt::Result {
-            let stmt = &parser.stmts[*stmt_idx];
-            let indent_str = " ".repeat(indent * 2);
-            match stmt {
-                Stmt::Expr(expr) => write_expr_no_idx(f, parser, expr),
-                Stmt::While(expr, block) => {
-                    write!(f, "while ")?;
-                    write_expr(f, parser, expr)?;
-                    write!(f, "\n")?;
-                    write_block(f, parser, block, indent + 1)
-                }
-                Stmt::For(expr, idx_expr, block) => {
-                    write!(f, "for ")?;
-                    write_expr(f, parser, expr)?;
-                    if let Some(idx) = idx_expr {
-                        write!(f, " ")?;
-                        write_expr(f, parser, idx)?;
+            fn write_expr(&mut self, expr: &ExprIdx) -> std::fmt::Result {
+                let expr = if let Stmt::Expr(expr) = &self.parser.stmts[*expr] {
+                    expr
+                } else {
+                    panic!("expected expr, got: {:?}", self.parser.stmts[*expr]);
+                };
+                self.write_expr_no_idx(expr)
+            }
+            fn write_block(&mut self, block: &StmtIdx, indent: usize) -> std::fmt::Result {
+                let stmts = if let Stmt::Block(block) = &self.parser.stmts[*block] {
+                    block
+                } else {
+                    panic!("expected block");
+                };
+                let indent_str = " ".repeat(indent * 2);
+                for stmt_idx in stmts {
+                    write!(self.f, "{indent_str}")?;
+                    self.write_stmt(stmt_idx, indent)?;
+                    if !std::ptr::eq(stmt_idx, &stmts[stmts.len() - 1]) {
+                        write!(self.f, "\n")?;
                     }
-                    write!(f, "\n")?;
-                    write_block(f, parser, block, indent + 1)
                 }
-                Stmt::If(expr, block, else_expr) => {
-                    write!(f, "if ")?;
-                    write_expr(f, parser, expr)?;
-                    write!(f, "\n")?;
-                    if let Some(else_expr) = else_expr {
-                        write_block(f, parser, block, indent + 1)?;
-                        if let Stmt::If(_, _, _) = parser.stmts[*else_expr] {
-                            write!(f, "\n{indent_str}else ")?;
-                            write_stmt(f, parser, else_expr, indent)
+                Ok(())
+            }
+            fn write_stmt(&mut self, stmt_idx: &StmtIdx, indent: usize) -> std::fmt::Result {
+                let stmt = &self.parser.stmts[*stmt_idx];
+                let indent_str = " ".repeat(indent * 2);
+                match stmt {
+                    Stmt::Expr(expr) => self.write_expr_no_idx(expr),
+                    Stmt::While(expr, block) => {
+                        write!(self.f, "while ")?;
+                        self.write_expr(expr)?;
+                        write!(self.f, "\n")?;
+                        self.write_block(block, indent + 1)
+                    }
+                    Stmt::For(expr, idx_expr, block) => {
+                        write!(self.f, "for ")?;
+                        self.write_expr(expr)?;
+                        if let Some(idx) = idx_expr {
+                            write!(self.f, " ")?;
+                            self.write_expr(idx)?;
+                        }
+                        write!(self.f, "\n")?;
+                        self.write_block(block, indent + 1)
+                    }
+                    Stmt::If(expr, block, else_expr) => {
+                        write!(self.f, "if ")?;
+                        self.write_expr(expr)?;
+                        write!(self.f, "\n")?;
+                        if let Some(else_expr) = else_expr {
+                            self.write_block(block, indent + 1)?;
+                            if let Stmt::If(_, _, _) = self.parser.stmts[*else_expr] {
+                                write!(self.f, "\n{indent_str}else ")?;
+                                self.write_stmt(else_expr, indent)
+                            } else {
+                                write!(self.f, "\n{indent_str}else\n")?;
+                                self.write_block(else_expr, indent + 1)
+                            }
                         } else {
-                            write!(f, "\n{indent_str}else\n")?;
-                            write_block(f, parser, else_expr, indent + 1)
+                            self.write_block(block, indent + 1)
                         }
-                    } else {
-                        write_block(f, parser, block, indent + 1)
                     }
-                }
-                Stmt::Fn(name, args, block) => {
-                    write!(f, "fn ")?;
-                    write_expr(f, parser, name)?;
-                    for arg in args {
-                        write!(f, " ")?;
-                        write_expr(f, parser, arg)?;
+                    Stmt::Fn(name, args, block) => {
+                        write!(self.f, "fn ")?;
+                        self.write_expr(name)?;
+                        for arg in args {
+                            write!(self.f, " ")?;
+                            self.write_expr(arg)?;
+                        }
+                        write!(self.f, "\n")?;
+                        self.write_block(block, indent + 1)
                     }
-                    write!(f, "\n")?;
-                    write_block(f, parser, block, indent + 1)
+                    Stmt::Ret(ret) => {
+                        write!(self.f, "ret ")?;
+                        self.write_expr(ret)
+                    }
+                    Stmt::Block(_) => self.write_block(stmt_idx, indent + 1),
                 }
-                Stmt::Ret(ret) => {
-                    write!(f, "ret ")?;
-                    write_expr(f, parser, ret)
-                }
-                Stmt::Block(_) => write_block(f, parser, stmt_idx, indent + 1),
             }
         }
         writeln!(f, "{:?}", self.stmts)?;
-        write_block(f, self, &0, 0)
+        let mut writer = Writer { f, parser: self };
+        writer.write_block(&0, 0)
     }
 }
