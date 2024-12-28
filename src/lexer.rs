@@ -40,6 +40,7 @@ pub enum Tok {
     CloseParen,
     Comma,
     Num,
+    Flt,
     Str,
     Id,
     Newline,
@@ -84,6 +85,7 @@ impl Display for Tok {
                 CloseParen => ")",
                 Comma => ",",
                 Num => "<num>",
+                Flt => "<flt>",
                 Str => "<str>",
                 Id => "<id>",
                 Newline => "\\n",
@@ -124,7 +126,8 @@ impl Tok {
     pub fn precedence(self) -> u8 {
         use Tok::*;
         match self {
-            If | Else | While | For | Fn | Ret | Newline | Indent | Unk | End | Id | Str | Num => 0,
+            If | Else | While | For | Fn | Ret | Newline | Indent | Unk | End | Id | Str | Num
+            | Flt => 0,
             OpenParen | CloseParen => 1,
             Mul | Div | Mod => 2,
             Add | Sub => 3,
@@ -288,15 +291,24 @@ impl<'a> Lexer<'a> {
                     _ => {
                         if c.is_numeric() {
                             let mut num_len = 1;
+                            let mut is_flt = false;
                             while let Some(next_ch) = self.chars.clone().next() {
-                                if next_ch.is_numeric() {
+                                if next_ch.is_numeric() || next_ch == '.' {
+                                    if is_flt && next_ch == '.' {
+                                        panic!("float can only have single dot (.)");
+                                    }
+                                    is_flt = true;
                                     num_len += 1;
                                     self.chars.next();
                                 } else {
                                     break;
                                 }
                             }
-                            Token::new(Tok::Num, self.pos, self.pos + num_len)
+                            if is_flt {
+                                Token::new(Tok::Flt, self.pos, self.pos + num_len)
+                            } else {
+                                Token::new(Tok::Num, self.pos, self.pos + num_len)
+                            }
                         } else {
                             let mut id = String::from(c);
 

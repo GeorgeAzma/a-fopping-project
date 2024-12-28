@@ -8,7 +8,7 @@ enum Value {
     Int(i64),
     Str(String),
     #[allow(unused)]
-    Float(f64), // TODO: use floats
+    Flt(f64),
     To(i64, i64),
     Paren(Vec<Value>), // fn args (or perhaps tuple)
     Fn(StmtIdx),       // fn ptr
@@ -20,7 +20,7 @@ impl Display for Value {
             Value::None => write!(f, "None"),
             Value::Int(int) => write!(f, "{int}"),
             Value::Str(str) => write!(f, "{str}"),
-            Value::Float(flt) => write!(f, "{flt}"),
+            Value::Flt(flt) => write!(f, "{flt}"),
             Value::To(start, end) => write!(f, "{start}->{end}"),
             Value::Paren(vals) => {
                 write!(f, "(")?;
@@ -166,7 +166,8 @@ impl<'a> Interpreter<'a> {
             panic!("failed to eval, expr not found")
         };
         match expr {
-            Expr::Num(num) => Value::Int(*num),
+            Expr::Int(int) => Value::Int(*int),
+            Expr::Flt(flt) => Value::Flt(*flt),
             Expr::Str(str) => Value::Str(str.clone()),
             Expr::Id(_) => self.get_or_add_local(expr_idx, Value::None),
             Expr::Paren(exprs) => {
@@ -187,21 +188,21 @@ impl<'a> Interpreter<'a> {
                 use Value::*;
                 let add = |lhs: &Value, rhs: &Value| match (lhs.clone(), rhs.clone()) {
                     (Int(lhs), Int(rhs)) => Int(lhs + rhs),
-                    (Float(lhs), Float(rhs)) => Float(lhs + rhs),
-                    (Int(lhs), Float(rhs)) => Float(lhs as f64 + rhs),
-                    (Float(lhs), Int(rhs)) => Float(lhs + rhs as f64),
+                    (Flt(lhs), Flt(rhs)) => Flt(lhs + rhs),
+                    (Int(lhs), Flt(rhs)) => Flt(lhs as f64 + rhs),
+                    (Flt(lhs), Int(rhs)) => Flt(lhs + rhs as f64),
                     (Str(lhs), Str(rhs)) => Str(lhs + &rhs),
                     (Str(lhs), Int(rhs)) => Str(lhs + &rhs.to_string()),
-                    (Str(lhs), Float(rhs)) => Str(lhs + &rhs.to_string()),
+                    (Str(lhs), Flt(rhs)) => Str(lhs + &rhs.to_string()),
                     (Int(lhs), Str(rhs)) => Str(lhs.to_string() + &rhs),
-                    (Float(lhs), Str(rhs)) => Str(lhs.to_string() + &rhs),
+                    (Flt(lhs), Str(rhs)) => Str(lhs.to_string() + &rhs),
                     _ => panic!("{lhs:?} + {rhs:?} is invalid"),
                 };
                 let sub = |lhs: &Value, rhs: &Value| match (lhs.clone(), rhs.clone()) {
                     (Int(lhs), Int(rhs)) => Int(lhs - rhs),
-                    (Float(lhs), Float(rhs)) => Float(lhs - rhs),
-                    (Int(lhs), Float(rhs)) => Float(lhs as f64 - rhs),
-                    (Float(lhs), Int(rhs)) => Float(lhs - rhs as f64),
+                    (Flt(lhs), Flt(rhs)) => Flt(lhs - rhs),
+                    (Int(lhs), Flt(rhs)) => Flt(lhs as f64 - rhs),
+                    (Flt(lhs), Int(rhs)) => Flt(lhs - rhs as f64),
                     (Str(mut lhs), Int(rhs)) => {
                         lhs.truncate(lhs.len() - rhs as usize);
                         Str(lhs)
@@ -210,12 +211,12 @@ impl<'a> Interpreter<'a> {
                 };
                 let mul = |lhs: &Value, rhs: &Value| match (lhs.clone(), rhs.clone()) {
                     (Int(lhs), Int(rhs)) => Int(lhs * rhs),
-                    (Float(lhs), Float(rhs)) => Float(lhs * rhs),
-                    (Int(lhs), Float(rhs)) => Float(lhs as f64 * rhs),
-                    (Float(lhs), Int(rhs)) => Float(lhs * rhs as f64),
+                    (Flt(lhs), Flt(rhs)) => Flt(lhs * rhs),
+                    (Int(lhs), Flt(rhs)) => Flt(lhs as f64 * rhs),
+                    (Flt(lhs), Int(rhs)) => Flt(lhs * rhs as f64),
                     (Str(lhs), Int(rhs)) => Str(lhs.repeat(rhs as usize)),
                     (Int(lhs), Str(rhs)) => Str(rhs.repeat(lhs as usize)),
-                    (Str(mut lhs), Float(rhs)) | (Float(rhs), Str(mut lhs)) => {
+                    (Str(mut lhs), Flt(rhs)) | (Flt(rhs), Str(mut lhs)) => {
                         let lhs_len = (lhs.len() as f64 * rhs).round() as usize;
                         if rhs >= 1.0 {
                             lhs = lhs.repeat(rhs.ceil() as usize);
@@ -227,9 +228,9 @@ impl<'a> Interpreter<'a> {
                 };
                 let div = |lhs: &Value, rhs: &Value| match (lhs.clone(), rhs.clone()) {
                     (Int(lhs), Int(rhs)) => Int(lhs / rhs),
-                    (Float(lhs), Float(rhs)) => Float(lhs / rhs),
-                    (Int(lhs), Float(rhs)) => Float(lhs as f64 / rhs),
-                    (Float(lhs), Int(rhs)) => Float(lhs / rhs as f64),
+                    (Flt(lhs), Flt(rhs)) => Flt(lhs / rhs),
+                    (Int(lhs), Flt(rhs)) => Flt(lhs as f64 / rhs),
+                    (Flt(lhs), Int(rhs)) => Flt(lhs / rhs as f64),
                     (Str(mut lhs), Int(rhs)) => {
                         lhs.truncate(lhs.len() / rhs as usize);
                         Str(lhs)
@@ -238,7 +239,7 @@ impl<'a> Interpreter<'a> {
                         rhs.truncate(rhs.len() / lhs as usize);
                         Str(rhs)
                     }
-                    (Str(mut lhs), Float(rhs)) | (Float(rhs), Str(mut lhs)) => {
+                    (Str(mut lhs), Flt(rhs)) | (Flt(rhs), Str(mut lhs)) => {
                         let lhs_len = (lhs.len() as f64 / rhs).round() as usize;
                         if rhs >= 1.0 {
                             lhs = lhs.repeat(rhs.ceil() as usize);
@@ -250,9 +251,9 @@ impl<'a> Interpreter<'a> {
                 };
                 let m0d = |lhs: &Value, rhs: &Value| match (lhs.clone(), rhs.clone()) {
                     (Int(lhs), Int(rhs)) => Int(lhs % rhs),
-                    (Float(lhs), Float(rhs)) => Float(lhs % rhs),
-                    (Int(lhs), Float(rhs)) => Float(lhs as f64 % rhs),
-                    (Float(lhs), Int(rhs)) => Float(lhs % rhs as f64),
+                    (Flt(lhs), Flt(rhs)) => Flt(lhs % rhs),
+                    (Int(lhs), Flt(rhs)) => Flt(lhs as f64 % rhs),
+                    (Flt(lhs), Int(rhs)) => Flt(lhs % rhs as f64),
                     (Str(mut lhs), Int(rhs)) => {
                         lhs.truncate(rhs as usize);
                         Str(lhs)
@@ -274,9 +275,9 @@ impl<'a> Interpreter<'a> {
                 let le = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs < rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs < rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) < rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs < (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs < rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) < rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs < (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs < rhs) as i64),
                         _ => panic!("{lhs:?} < {rhs:?} is invalid"),
                     }
@@ -284,9 +285,9 @@ impl<'a> Interpreter<'a> {
                 let leq = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs <= rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs <= rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) <= rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs <= (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs <= rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) <= rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs <= (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs <= rhs) as i64),
                         _ => panic!("{lhs:?} <= {rhs:?} is invalid"),
                     }
@@ -294,9 +295,9 @@ impl<'a> Interpreter<'a> {
                 let ge = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs > rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs > rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) > rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs > (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs > rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) > rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs > (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs > rhs) as i64),
                         _ => panic!("{lhs:?} > {rhs:?} is invalid"),
                     }
@@ -304,9 +305,9 @@ impl<'a> Interpreter<'a> {
                 let geq = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs >= rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs >= rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) >= rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs >= (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs >= rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) >= rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs >= (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs >= rhs) as i64),
                         _ => panic!("{lhs:?} >= {rhs:?} is invalid"),
                     }
@@ -314,9 +315,9 @@ impl<'a> Interpreter<'a> {
                 let eq_eq = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs == rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs == rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) == rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs == (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs == rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) == rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs == (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs == rhs) as i64),
                         _ => panic!("{lhs:?} == {rhs:?} is invalid"),
                     }
@@ -324,9 +325,9 @@ impl<'a> Interpreter<'a> {
                 let neq = |lhs: &Value, rhs: &Value| -> Value {
                     match (lhs.clone(), rhs.clone()) {
                         (Int(lhs), Int(rhs)) => Int((lhs != rhs) as i64),
-                        (Float(lhs), Float(rhs)) => Int((lhs != rhs) as i64),
-                        (Int(lhs), Float(rhs)) => Int(((lhs as f64) != rhs) as i64),
-                        (Float(lhs), Int(rhs)) => Int((lhs != (rhs as f64)) as i64),
+                        (Flt(lhs), Flt(rhs)) => Int((lhs != rhs) as i64),
+                        (Int(lhs), Flt(rhs)) => Int(((lhs as f64) != rhs) as i64),
+                        (Flt(lhs), Int(rhs)) => Int((lhs != (rhs as f64)) as i64),
                         (Str(lhs), Str(rhs)) => Int((lhs != rhs) as i64),
                         _ => panic!("{lhs:?} != {rhs:?} is invalid"),
                     }
@@ -335,7 +336,7 @@ impl<'a> Interpreter<'a> {
                     use crate::Tok::*;
                     match op {
                         If | Else | While | For | Fn | Ret | OpenParen | CloseParen | Comma
-                        | Num | Str | Id | Newline | Indent | Unk | End => {
+                        | Num | Flt | Str | Id | Newline | Indent | Unk | End => {
                             panic!("invalid op: {op}")
                         }
                         To => to(&lhs, &rhs),
@@ -418,9 +419,9 @@ impl<'a> Interpreter<'a> {
                             use Value::*;
                             match (lhs, rhs) {
                                 (Int(lhs), Int(rhs)) => Int(lhs.max(rhs)),
-                                (Float(lhs), Float(rhs)) => Float(lhs.max(rhs)),
-                                (Float(lhs), Int(rhs)) => Float(lhs.max(rhs as f64)),
-                                (Int(lhs), Float(rhs)) => Float((lhs as f64).max(rhs)),
+                                (Flt(lhs), Flt(rhs)) => Flt(lhs.max(rhs)),
+                                (Flt(lhs), Int(rhs)) => Flt(lhs.max(rhs as f64)),
+                                (Int(lhs), Flt(rhs)) => Flt((lhs as f64).max(rhs)),
                                 (lhs, rhs) => panic!("invalid args for max({lhs:?}, {rhs:?})"),
                             }
                         }

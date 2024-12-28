@@ -5,7 +5,8 @@ use crate::{Lexer, Tok, Token};
 pub type ExprIdx = usize;
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Num(i64),
+    Int(i64),
+    Flt(f64),
     Str(String),
     Id(String),
     Paren(Vec<ExprIdx>),       // ( expr )
@@ -97,6 +98,13 @@ impl<'a> Parser<'a> {
             .unwrap_or_else(|_| panic!("invalid Num tok: {num}"))
     }
 
+    fn tok_flt(&self) -> f64 {
+        assert!(self.tok() == Tok::Flt, "only Flt tok has flt");
+        let flt = self.tok_str();
+        flt.parse()
+            .unwrap_or_else(|_| panic!("invalid Flt tok: {flt}"))
+    }
+
     fn next_tok(&mut self) -> Tok {
         self.pos = self.cur_tok.start;
         let next_tok = self.lexer.next_tok();
@@ -136,9 +144,20 @@ impl<'a> Parser<'a> {
     fn num(&mut self) -> Option<ExprIdx> {
         if self.tok() == Tok::Num {
             let num = self.tok_num();
-            let num = self.add_expr(Expr::Num(num));
+            let num = self.add_expr(Expr::Int(num));
             self.next_tok();
             Some(num)
+        } else {
+            None
+        }
+    }
+
+    fn flt(&mut self) -> Option<ExprIdx> {
+        if self.tok() == Tok::Flt {
+            let flt = self.tok_flt();
+            let flt = self.add_expr(Expr::Flt(flt));
+            self.next_tok();
+            Some(flt)
         } else {
             None
         }
@@ -207,6 +226,7 @@ impl<'a> Parser<'a> {
         self.str()
             .or_else(|| self.paren())
             .or_else(|| self.num())
+            .or_else(|| self.flt())
             .or_else(|| {
                 self.id().map(|id| {
                     self.paren()
@@ -314,7 +334,8 @@ impl std::fmt::Debug for Parser<'_> {
         impl Writer<'_, '_> {
             fn write_expr_no_idx(&mut self, expr: &Expr, parent_prec: u8) -> std::fmt::Result {
                 match expr {
-                    Expr::Num(i) => write!(self.f, "{i}"),
+                    Expr::Int(i) => write!(self.f, "{i}"),
+                    Expr::Flt(f) => write!(self.f, "{f}"),
                     Expr::Id(id) => write!(self.f, "{id}"),
                     Expr::Op(lhs, op, rhs) => {
                         let op_prec = op.precedence();
