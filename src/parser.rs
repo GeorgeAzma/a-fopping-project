@@ -15,7 +15,7 @@ pub enum Expr {
 
 pub type StmtIdx = usize;
 pub type BlockIdx = usize;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Ret(ExprIdx),                            // ret expr
@@ -28,7 +28,7 @@ pub enum Stmt {
 
 pub struct Parser<'a> {
     code: &'a str,
-    stmts: Vec<Stmt>,
+    pub(crate) stmts: Vec<Stmt>,
     intern_map: HashMap<String, StmtIdx>,
     /// pushed/popped when indent/dedent
     block_stacks: Vec<StmtIdx>,
@@ -293,14 +293,14 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> Option<StmtIdx> {
-        (!self.skip(Tok::Indent) && !self.skip(Tok::Newline) && !self.skip(Tok::End)).then_some(
+        (!self.skip(Tok::Indent) && !self.skip(Tok::Newline) && !self.skip(Tok::End)).then(|| {
             (self.skip(Tok::Ret).then(|| self.ret()))
                 .or_else(|| self.skip(Tok::While).then(|| self.while_()))
                 .or_else(|| self.skip(Tok::For).then(|| self.for_()))
                 .or_else(|| self.skip(Tok::If).then(|| self.if_()))
                 .or_else(|| self.skip(Tok::Fn).then(|| self.fn_()))
-                .unwrap_or_else(|| self.expr()),
-        )
+                .unwrap_or_else(|| self.expr())
+        })
     }
 }
 

@@ -6,10 +6,8 @@ Simple parser written in rust, for uni project
 2. Enter `cargo run` in terminal
 
 ## Language Definition
-- similar to python and rust, because of that 
-  I'll call it `Marathon` with `.mar` file extension
+- similar to python and rust, so  I'll call it `Marathon` with `.mar` file extension
 - interpreted, parsed line by line
-- variables are stored as `HashMap(var_name, var_value)` (as in python)
 - indentation as scope
 ``` python
 fn my_func n m
@@ -26,8 +24,10 @@ fn my_func n m
 
     if foo == 0
         0
-    else
+    else if foo == 1
         1
+    else
+        2
 # `max` and `say` are built-in functions
 ```
 ##  Grammar Definition
@@ -69,11 +69,5 @@ cmt: CMT .* NL
 - `algos.rs` contains all algorithms written in rust for reference
 - `test.mar` contains basic test marathon code
 ## Todo
-- built-in functions
-    - `say`
-    - `max`
 - operation precendence order
-- interpret and run code
-    - execute line by line with correct operation order
-    - store local variables values in `HashMap`
-- might need other representation like `IR` instead of `AST` for exec
+- fix interpreter

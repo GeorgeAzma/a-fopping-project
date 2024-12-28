@@ -1,12 +1,9 @@
 fn fib n
     a = 0
     b = 1
-    for 0 -> n i # => is inclusive
-        b += a + (n + n) + n * n # b += a
-        a = identity(b) - a
-    if a == 42
-        ret a
-    else if a != 42
-        say("you've failed to reach meaning of life")
-    else
-        ret b
+    for 0 -> n i
+        b += a
+        a = b - a
+    ret a
+res = fib(4)
+say(res)
