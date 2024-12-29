@@ -437,6 +437,24 @@ impl<'a> Interpreter<'a> {
                                 (lhs, rhs) => panic!("invalid args for max({lhs:?}, {rhs:?})"),
                             }
                         }
+                        "min" => {
+                            assert_eq!(
+                                paren_args.len(),
+                                2,
+                                "min takes 2 args, got {}",
+                                paren_args.len()
+                            );
+                            let lhs = self.expr(paren_args[0]);
+                            let rhs = self.expr(paren_args[1]);
+                            use Value::*;
+                            match (lhs, rhs) {
+                                (Int(lhs), Int(rhs)) => Int(lhs.min(rhs)),
+                                (Flt(lhs), Flt(rhs)) => Flt(lhs.min(rhs)),
+                                (Flt(lhs), Int(rhs)) => Flt(lhs.min(rhs as f64)),
+                                (Int(lhs), Flt(rhs)) => Flt((lhs as f64).min(rhs)),
+                                (lhs, rhs) => panic!("invalid args for min({lhs:?}, {rhs:?})"),
+                            }
+                        }
                         _ => {
                             let fn_idx = *if let Value::Fn(fn_idx) = self.local(*id) {
                                 fn_idx

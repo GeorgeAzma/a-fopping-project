@@ -14,22 +14,20 @@ fn my_func n m
     foo = 123
     while foo > 0
         foo -= 1
-    
     # iter from `foo` to 8
     for foo -> 8
         n += 1
     # from 0 to n (inclusive), via index `i`
     for 0 => n i
         say(max(i / 2, max(3 + m, n))) # prints max
-
     if foo == 0
         0
     else if foo == 1
         1
     else
         2
-# `max` and `say` are built-in functions
 ```
+- built-in funcs `say`, `max`, `min`
 ##  Grammar Definition
 ### Tokens `handled by lexer`
 ``` py
@@ -70,4 +68,3 @@ cmt: CMT .* NL
 - `test.mar` contains basic test marathon code
 ## Todo
 - operation precendence order
-- fix interpreter
