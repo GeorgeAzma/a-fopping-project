@@ -9,9 +9,10 @@ pub enum Expr {
     Flt(f64),
     Str(String),
     Id(String),
-    Paren(Vec<ExprIdx>),              // ( expr )
+    Paren(Option<ExprIdx>),           // (expr)?
+    Comma(Vec<ExprIdx>),              // {expr,}+
     Op(ExprIdx, Vec<(Tok, ExprIdx)>), // expr + (op + expr)+
-    FnCall(ExprIdx, ExprIdx),         // fn_name + paren
+    FnCall(ExprIdx, ExprIdx),         // fn_name + paren/comma
 }
 
 pub type StmtIdx = usize;
@@ -210,19 +211,35 @@ impl<'a> Parser<'a> {
         self.add_stmt(Stmt::Expr(expr))
     }
 
-    fn paren(&mut self) -> Option<ExprIdx> {
-        if self.skip(Tok::OpenParen) {
-            let mut exprs = vec![];
+    fn comma(&mut self, lhs: ExprIdx) -> Option<ExprIdx> {
+        if self.skip(Tok::Comma) {
+            let mut exprs = vec![lhs];
             loop {
-                if self.skip(Tok::CloseParen) {
-                    break;
-                }
                 let expr = self.expr();
                 exprs.push(expr);
-                self.skip(Tok::Comma);
+                if !self.skip(Tok::Comma) {
+                    break;
+                }
             }
-            let paren = self.add_expr(Expr::Paren(exprs));
-            Some(paren)
+            let comma = self.add_expr(Expr::Comma(exprs));
+            Some(comma)
+        } else {
+            None
+        }
+    }
+
+    fn paren(&mut self) -> Option<ExprIdx> {
+        if self.skip(Tok::OpenParen) {
+            if self.skip(Tok::CloseParen) {
+                Some(self.add_expr(Expr::Paren(None)))
+            } else {
+                let inner_expr = self.expr();
+                if !self.skip(Tok::CloseParen) {
+                    expected!(self, ")");
+                }
+                let paren = self.add_expr(Expr::Paren(Some(inner_expr)));
+                Some(paren)
+            }
         } else {
             None
         }
@@ -240,10 +257,12 @@ impl<'a> Parser<'a> {
             .or_else(|| {
                 self.id().map(|id| {
                     self.paren()
-                        .map_or(id, |paren| self.add_expr(Expr::FnCall(id, paren)))
+                        .map(|paren| self.add_expr(Expr::FnCall(id, paren)))
+                        .unwrap_or(id)
                 })
             })
             .map(|expr| op.then(|| self.op(expr).unwrap_or(expr)).unwrap_or(expr))
+            .map(|expr| self.comma(expr).unwrap_or(expr))
             .unwrap_or_else(|| expected!(self, "expr"))
     }
 
@@ -279,7 +298,6 @@ impl<'a> Parser<'a> {
     fn if_(&mut self) -> StmtIdx {
         let cond = self.expr();
         let block = self.block();
-        while self.skip(Tok::Indent) | self.skip(Tok::Newline) {}
         if self.skip(Tok::Else) {
             if self.skip(Tok::If) {
                 let else_if_block = self.if_();
@@ -322,7 +340,7 @@ impl<'a> Parser<'a> {
     }
 
     fn stmt(&mut self) -> Option<StmtIdx> {
-        while self.skip(Tok::Indent) | self.skip(Tok::Newline) {}
+        while self.skip(Tok::Indent) | self.skip(Tok::Newline) | self.skip(Tok::Else) {}
         (!self.skip(Tok::End)).then(|| {
             (self.skip(Tok::Ret).then(|| self.ret()))
                 .or_else(|| self.skip(Tok::While).then(|| self.while_()))
@@ -359,17 +377,23 @@ impl std::fmt::Debug for Parser<'_> {
                         self.write_expr(name)?;
                         self.write_expr(paren)
                     }
-                    Expr::Paren(exprs) => {
+                    Expr::Paren(expr) => {
                         write!(self.f, "(")?;
+                        if let Some(expr) = expr {
+                            self.write_expr(expr)?;
+                        }
+                        write!(self.f, ")")
+                    }
+                    Expr::Str(str) => write!(self.f, "\"{str}\""),
+                    Expr::Comma(exprs) => {
                         for expr in exprs {
                             self.write_expr(expr)?;
                             if !std::ptr::eq(expr, &exprs[exprs.len() - 1]) {
                                 write!(self.f, ", ")?;
                             }
                         }
-                        write!(self.f, ")")
+                        Ok(())
                     }
-                    Expr::Str(str) => write!(self.f, "\"{str}\""),
                 }
             }
             fn write_expr(&mut self, expr: &ExprIdx) -> std::fmt::Result {

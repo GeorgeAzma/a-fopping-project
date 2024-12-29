@@ -67,8 +67,5 @@ cmt: CMT .* NL
 - `algos.rs` contains all algorithms written in rust for reference
 - `test.mar` contains basic test marathon code
 ## Todo
-- fix double dedents
 - let parser handle operator precedence not interpreter
-- maybe add tuples and dot operator
-- comma args expr, instead of paren (useful for tuple destructuring)
-  also allows fn calls without parens (only comma separated args)
+- maybe add tuples and dot operator + tuple destructuring

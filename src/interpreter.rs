@@ -176,7 +176,14 @@ impl<'a> Interpreter<'a> {
             Expr::Flt(flt) => Value::Flt(*flt),
             Expr::Str(str) => Value::Str(str.clone()),
             Expr::Id(_) => self.get_or_add_local(expr_idx, Value::None),
-            Expr::Paren(exprs) => {
+            Expr::Paren(expr) => {
+                if let Some(expr) = expr {
+                    self.expr(*expr)
+                } else {
+                    Value::None
+                }
+            }
+            Expr::Comma(exprs) => {
                 let mut expr_vals = vec![];
                 for expr in exprs {
                     let expr_val = self.expr(*expr);
@@ -237,16 +244,26 @@ impl<'a> Interpreter<'a> {
             // checks fn name if it's built-in calls it
             // else calls locally defined fn with evaluated paren args
             Expr::FnCall(id, paren) => {
-                let paren_args = if let Stmt::Expr(Expr::Paren(args)) = &self.parser.stmts[*paren] {
-                    args
-                } else {
-                    panic!("expected fn paren for fn call");
+                let paren_args = match &self.parser.stmts[*paren] {
+                    Stmt::Expr(Expr::Paren(expr)) => {
+                        if let Some(expr) = expr {
+                            match &self.parser.stmts[*expr] {
+                                Stmt::Expr(Expr::Comma(args)) => args.clone(),
+                                Stmt::Expr(_) => vec![*expr],
+                                _ => panic!("stmt is not comma args"),
+                            }
+                        } else {
+                            vec![]
+                        }
+                    }
+                    Stmt::Expr(Expr::Comma(args)) => args.clone(),
+                    _ => panic!("expected [() | (args,) | args,] for fn call"),
                 };
                 if let Stmt::Expr(Expr::Id(fn_name)) = &self.parser.stmts[*id] {
                     // built-in functions
                     match fn_name.as_str() {
                         "say" => {
-                            for paren_arg in paren_args {
+                            for paren_arg in paren_args.iter() {
                                 let arg_val = self.expr(*paren_arg);
                                 print!("{arg_val}");
                                 if !std::ptr::eq(paren_arg, &paren_args[paren_args.len() - 1]) {
