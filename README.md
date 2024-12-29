@@ -68,9 +68,3 @@ fn: ID (ID)* block
 block: (NL)? (IND stmt NL)+ # needs to have appropriate amount of indents
 cmt: CMT .* NL 
 ```
-## Todo
-- let parser handle operator precedence not interpreter
-- maybe add tuples and dot operator + tuple destructuring
-- fix empty dedent statement causing issues
-- recursion
-- binary ops
