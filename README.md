@@ -70,3 +70,4 @@ cmt: CMT .* NL
 - let parser handle operator precedence not interpreter
 - maybe add tuples and dot operator + tuple destructuring
 - fix empty dedent statement causing issues
+- recursion

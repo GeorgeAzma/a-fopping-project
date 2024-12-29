@@ -20,7 +20,7 @@ pub type BlockIdx = usize;
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    Ret(ExprIdx),                            // ret expr
+    Ret(Option<ExprIdx>),                    // ret (expr)?
     Block(Vec<StmtIdx>),                     // (indent + expr + \n)+
     While(ExprIdx, BlockIdx),                // cond_expr + NewIndent + block
     For(ExprIdx, Option<ExprIdx>, BlockIdx), // range_op_expr + idx_id + NewIndent + block
@@ -312,8 +312,12 @@ impl<'a> Parser<'a> {
     }
 
     fn ret(&mut self) -> StmtIdx {
-        let ret = self.expr();
-        self.add_stmt(Stmt::Ret(ret))
+        if self.tok() == Tok::Newline {
+            self.add_stmt(Stmt::Ret(None))
+        } else {
+            let ret = self.expr();
+            self.add_stmt(Stmt::Ret(Some(ret)))
+        }
     }
 
     fn while_(&mut self) -> StmtIdx {
@@ -469,8 +473,12 @@ impl std::fmt::Debug for Parser<'_> {
                         self.write_block(block, indent + 1)
                     }
                     Stmt::Ret(ret) => {
-                        write!(self.f, "ret ")?;
-                        self.write_expr(ret)
+                        if let Some(ret) = ret {
+                            write!(self.f, "ret ")?;
+                            self.write_expr(ret)
+                        } else {
+                            write!(self.f, "ret")
+                        }
                     }
                     Stmt::Block(_) => self.write_block(stmt_idx, indent + 1),
                 }

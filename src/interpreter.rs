@@ -75,7 +75,11 @@ impl<'a> Interpreter<'a> {
                 self.add_local(stmt_idx, expr_val)
             }
             Stmt::Ret(ret) => {
-                let ret_val = self.expr(*ret);
+                let ret_val = if let Some(ret) = ret {
+                    self.expr(*ret)
+                } else {
+                    Value::None
+                };
                 self.ret_tmp = ret_val;
                 self.clear_locals();
                 return true;
