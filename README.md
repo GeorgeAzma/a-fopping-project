@@ -1,5 +1,5 @@
 # Marathon `FoP Project`
-Simple parser written in rust, for uni project
+Simple lexer/parser/interpreter written in rust, for uni project
 
 ## How To Run
 1. Download Rust from https://www.rust-lang.org/tools/install
@@ -9,6 +9,7 @@ Simple parser written in rust, for uni project
 - similar to python and rust, so  I'll call it `Marathon` with `.mar` file extension
 - interpreted, parsed line by line
 - indentation as scope
+- minimal syntax
 ``` python
 fn my_func n m
     foo = 123
@@ -27,7 +28,7 @@ fn my_func n m
     else
         2
 ```
-- built-in funcs `say`, `max`, `min`
+- built-in funcs `say`, `msg`, `max`, `min`
 ##  Grammar Definition
 ### Tokens `handled by lexer`
 ``` py
@@ -38,24 +39,28 @@ ASSIGN: '=' | '+=' | '-=' | '/=' | '*=' | '%='
 COND: '>'  | '<' | '==' | '>=' | '<=' 
 RANGE: '->' | '=>'
 PAREN: '('  | ')'
+STR: '"' | '\''
+COMMA: ','
 CMT: '#'
 NL: '\n' # newline
-IND: (' '{4})+ # 4 space indents
+IND: (' '{4})+ # 4 space indents (only at line start)
 # Identifier (alphanumeric, must start with letter)
 ID: [a-zA-Z_][a-zA-Z0-9_]* 
-NUM: (-)?[0-9]
+NUM: (-)?[0-9]+
+FLT: NUM.[0-9]*
 ```
 ### Exprs and Stmts `handled by parser`
 ``` py
-expr: NUM | ID | str | paren | op | fn_call
+expr: NUM | FLT | ID | str | paren | comma | op | fn_call
 stmt: expr NL | ret | block | while | for | if | fn
 ```
 ### Helpers
 ``` py
 op: expr OP expr
-fn_call: ID '(' (expr (',' expr)*)? ')'
+fn_call: ID '(' (expr comma?)? ')'
 paren: '(' expr ')'
-str: '"' expr '"'
+comma: (expr',')+
+str: STR expr STR 
 while: expr block
 for: expr RANGE expr (ID)? block # only handles indexed num ranges
 if: expr block (else (block | if))? 
@@ -63,11 +68,9 @@ fn: ID (ID)* block
 block: (NL)? (IND stmt NL)+ # needs to have appropriate amount of indents
 cmt: CMT .* NL 
 ```
-## Notes
-- `algos.rs` contains all algorithms written in rust for reference
-- `test.mar` contains basic test marathon code, which is run
 ## Todo
 - let parser handle operator precedence not interpreter
 - maybe add tuples and dot operator + tuple destructuring
 - fix empty dedent statement causing issues
 - recursion
+- binary ops

@@ -16,7 +16,6 @@ pub enum Tok {
     To,
     ToEq,
     // ops
-    // Not,
     Eq,
     Le,
     Ge,
