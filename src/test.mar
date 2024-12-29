@@ -1,11 +1,13 @@
 fn sum_n n
     ret n * (n + 1) / 2
+say('sum(4) = 1 + 2 + 3 + 4 =', sum_n(4))
 
 fn factorial n
     f = 1
     for 2 => n i
         f *= i
     ret f
+say('factorial(4) = 1 * 2 * 3 * 4 =', factorial(4))
 
 fn gcd a b
     while b != 0
@@ -13,6 +15,7 @@ fn gcd a b
         b = a % b
         a = t
     ret a
+say('gcd(12, 20) =', gcd(12, 20))
 
 fn rev_num n
     r = 0
@@ -20,6 +23,7 @@ fn rev_num n
         r = r * 10 + n % 10
         n /= 10
     ret r
+say('rev_num(1234) =', rev_num(1234))
 
 fn is_prime n
     divs = 0
@@ -29,3 +33,42 @@ fn is_prime n
             if divs > 2
                 ret 0
     ret divs == 2
+say('is_prime(15) =', is_prime(15))
+
+fn is_num_palindrome n
+    ret rev_num(n) == n
+say('is_num_palindrome(1221) =', is_num_palindrome(1221))
+
+fn largest_dig n
+    r = 0
+    while n > 0
+        r = max(r, n % 10)
+        n /= 10
+    ret r
+say('largest_dig(193) =', largest_dig(193))
+
+fn sum_dig n
+    sum = 0
+    while n > 0
+        sum += n % 10
+        n /= 10
+    ret sum
+say('sum_dig(123) =', sum_dig(123))
+
+fn fib n
+    a = 0
+    b = 1
+    for 0 -> n
+        b += a
+        a = b - a
+    ret a
+say('fib(6) =', fib(6))
+
+fn mul_table n
+    msg('mul_table(5): ')
+    for 1 => 10 i
+        msg(n * i)
+        if i != 10
+            msg(' ')
+    say()
+mul_table(5)

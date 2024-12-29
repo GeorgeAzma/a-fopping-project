@@ -65,7 +65,8 @@ cmt: CMT .* NL
 ```
 ## Notes
 - `algos.rs` contains all algorithms written in rust for reference
-- `test.mar` contains basic test marathon code
+- `test.mar` contains basic test marathon code, which is run
 ## Todo
 - let parser handle operator precedence not interpreter
 - maybe add tuples and dot operator + tuple destructuring
+- fix empty dedent statement causing issues

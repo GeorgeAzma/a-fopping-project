@@ -77,6 +77,7 @@ impl<'a> Interpreter<'a> {
             Stmt::Ret(ret) => {
                 let ret_val = self.expr(*ret);
                 self.ret_tmp = ret_val;
+                self.clear_locals();
                 return true;
             }
             Stmt::Block(stmts) => self.block(&stmts),
@@ -90,7 +91,7 @@ impl<'a> Interpreter<'a> {
                 let (start, end) = if let Value::To(start, end) = to_val {
                     (start, end)
                 } else {
-                    panic!("");
+                    panic!("expected => or -> range values, got {to_val:?}");
                 };
                 for i in start..end {
                     if let Some(idx) = idx {
@@ -139,8 +140,13 @@ impl<'a> Interpreter<'a> {
     }
 
     fn rem_local(&mut self, id_expr: ExprIdx) {
-        let len = self.env_stack.len();
-        self.env_stack[len - 1].remove(&id_expr);
+        let last = self.env_stack.len() - 1;
+        self.env_stack[last].remove(&id_expr);
+    }
+
+    fn clear_locals(&mut self) {
+        let last = self.env_stack.len() - 1;
+        self.env_stack[last].clear();
     }
 
     fn find_local(&mut self, id_expr: StmtIdx) -> Option<&mut Value> {
@@ -268,8 +274,17 @@ impl<'a> Interpreter<'a> {
                                 print!("{arg_val}");
                                 if !std::ptr::eq(paren_arg, &paren_args[paren_args.len() - 1]) {
                                     print!(" ");
-                                } else {
-                                    println!("");
+                                }
+                            }
+                            println!("");
+                            Value::None
+                        }
+                        "msg" => {
+                            for paren_arg in paren_args.iter() {
+                                let arg_val = self.expr(*paren_arg);
+                                print!("{arg_val}");
+                                if !std::ptr::eq(paren_arg, &paren_args[paren_args.len() - 1]) {
+                                    print!(" ");
                                 }
                             }
                             Value::None
@@ -327,9 +342,10 @@ impl<'a> Interpreter<'a> {
                                     self.add_local(*fn_arg, arg_val);
                                 }
                                 self.stmt(*block);
-                                let mut ret_val = Value::None;
-                                std::mem::swap(&mut ret_val, &mut self.ret_tmp);
-
+                                for fn_arg in fn_args {
+                                    self.rem_local(*fn_arg);
+                                }
+                                let ret_val = self.ret_tmp.clone();
                                 ret_val
                             } else {
                                 panic!("{fn_:?} is not callable")

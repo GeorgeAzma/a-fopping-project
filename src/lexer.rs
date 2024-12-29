@@ -264,10 +264,10 @@ impl<'a> Lexer<'a> {
                     ('(', _) => Token::new(Tok::OpenParen, self.pos, self.pos + 1),
                     (')', _) => Token::new(Tok::CloseParen, self.pos, self.pos + 1),
                     (',', _) => Token::new(Tok::Comma, self.pos, self.pos + 1),
-                    ('"', _) => {
+                    ('"', _) | ('\'', _) => {
                         let mut i = 0;
                         while let Some(c) = self.chars.next() {
-                            if c == '"' {
+                            if c == '"' || c == '\'' {
                                 break;
                             }
                             i += 1;
