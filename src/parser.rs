@@ -9,9 +9,9 @@ pub enum Expr {
     Flt(f64),
     Str(String),
     Id(String),
-    Paren(Vec<ExprIdx>),       // ( expr )
-    Op(ExprIdx, Tok, ExprIdx), // expr + op + expr
-    FnCall(ExprIdx, ExprIdx),  // fn_name + paren
+    Paren(Vec<ExprIdx>),              // ( expr )
+    Op(ExprIdx, Vec<(Tok, ExprIdx)>), // expr + (op + expr)+
+    FnCall(ExprIdx, ExprIdx),         // fn_name + paren
 }
 
 pub type StmtIdx = usize;
@@ -187,8 +187,14 @@ impl<'a> Parser<'a> {
 
     fn op(&mut self, lhs: ExprIdx) -> Option<usize> {
         if let Some(op) = self.skip_if(Tok::is_op) {
-            let rhs = self.expr();
-            let op = self.add_expr(Expr::Op(lhs, op, rhs));
+            let rhs = self.expr_op(false);
+            let op = self.add_expr(Expr::Op(lhs, vec![(op, rhs)]));
+            while let Some(op_tok) = self.skip_if(Tok::is_op) {
+                let rhs = self.expr_op(false);
+                if let Stmt::Expr(Expr::Op(_, rhs_ops)) = &mut self.stmts[op] {
+                    rhs_ops.push((op_tok, rhs));
+                }
+            }
             Some(op)
         } else {
             None
@@ -223,6 +229,10 @@ impl<'a> Parser<'a> {
     }
 
     fn expr(&mut self) -> ExprIdx {
+        self.expr_op(true)
+    }
+
+    fn expr_op(&mut self, op: bool) -> ExprIdx {
         self.str()
             .or_else(|| self.paren())
             .or_else(|| self.num())
@@ -233,7 +243,7 @@ impl<'a> Parser<'a> {
                         .map_or(id, |paren| self.add_expr(Expr::FnCall(id, paren)))
                 })
             })
-            .map(|expr| self.op(expr).unwrap_or(expr))
+            .map(|expr| op.then(|| self.op(expr).unwrap_or(expr)).unwrap_or(expr))
             .unwrap_or_else(|| expected!(self, "expr"))
     }
 
@@ -269,6 +279,7 @@ impl<'a> Parser<'a> {
     fn if_(&mut self) -> StmtIdx {
         let cond = self.expr();
         let block = self.block();
+        while self.skip(Tok::Indent) | self.skip(Tok::Newline) {}
         if self.skip(Tok::Else) {
             if self.skip(Tok::If) {
                 let else_if_block = self.if_();
@@ -312,7 +323,7 @@ impl<'a> Parser<'a> {
 
     fn stmt(&mut self) -> Option<StmtIdx> {
         while self.skip(Tok::Indent) | self.skip(Tok::Newline) {}
-        (!self.skip(Tok::Indent) && !self.skip(Tok::Newline) && !self.skip(Tok::End)).then(|| {
+        (!self.skip(Tok::End)).then(|| {
             (self.skip(Tok::Ret).then(|| self.ret()))
                 .or_else(|| self.skip(Tok::While).then(|| self.while_()))
                 .or_else(|| self.skip(Tok::For).then(|| self.for_()))
@@ -331,22 +342,16 @@ impl std::fmt::Debug for Parser<'_> {
             parser: &'a Parser<'a>,
         }
         impl Writer<'_, '_> {
-            fn write_expr_no_idx(&mut self, expr: &Expr, parent_prec: u8) -> std::fmt::Result {
+            fn write_expr_no_idx(&mut self, expr: &Expr) -> std::fmt::Result {
                 match expr {
                     Expr::Int(i) => write!(self.f, "{i}"),
                     Expr::Flt(f) => write!(self.f, "{f}"),
                     Expr::Id(id) => write!(self.f, "{id}"),
-                    Expr::Op(lhs, op, rhs) => {
-                        let op_prec = op.precedence();
-                        let need_paren = op_prec < parent_prec;
-                        if need_paren {
-                            write!(self.f, "(")?;
-                        }
-                        self.write_expr_prec(lhs, op_prec)?;
-                        write!(self.f, " {op} ")?;
-                        self.write_expr_prec(rhs, op_prec)?;
-                        if need_paren {
-                            write!(self.f, ")")?;
+                    Expr::Op(lhs, rhs_ops) => {
+                        self.write_expr(lhs)?;
+                        for (op, rhs) in rhs_ops {
+                            write!(self.f, " {op} ")?;
+                            self.write_expr(rhs)?;
                         }
                         Ok(())
                     }
@@ -367,21 +372,13 @@ impl std::fmt::Debug for Parser<'_> {
                     Expr::Str(str) => write!(self.f, "\"{str}\""),
                 }
             }
-            fn write_expr_prec(&mut self, expr: &ExprIdx, prec: u8) -> std::fmt::Result {
-                let expr = if let Stmt::Expr(expr) = &self.parser.stmts[*expr] {
-                    expr
-                } else {
-                    panic!("expected expr, got: {:?}", self.parser.stmts[*expr]);
-                };
-                self.write_expr_no_idx(expr, prec)
-            }
             fn write_expr(&mut self, expr: &ExprIdx) -> std::fmt::Result {
                 let expr = if let Stmt::Expr(expr) = &self.parser.stmts[*expr] {
                     expr
                 } else {
                     panic!("expected expr, got: {:?}", self.parser.stmts[*expr]);
                 };
-                self.write_expr_no_idx(expr, 0)
+                self.write_expr_no_idx(expr)
             }
             fn write_block(&mut self, block: &StmtIdx, indent: usize) -> std::fmt::Result {
                 let stmts = if let Stmt::Block(block) = &self.parser.stmts[*block] {
@@ -403,7 +400,7 @@ impl std::fmt::Debug for Parser<'_> {
                 let stmt = &self.parser.stmts[*stmt_idx];
                 let indent_str = " ".repeat(indent * 2);
                 match stmt {
-                    Stmt::Expr(expr) => self.write_expr_no_idx(expr, 0),
+                    Stmt::Expr(expr) => self.write_expr_no_idx(expr),
                     Stmt::While(expr, block) => {
                         write!(self.f, "while ")?;
                         self.write_expr(expr)?;
