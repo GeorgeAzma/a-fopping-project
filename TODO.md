@@ -112,7 +112,7 @@ say("{a} {}", 3) # 1 2 3
 Todo
 ```
 ### Filesystem
-``` python
+``` py
 use other_file
 ```
 ### Toolchain

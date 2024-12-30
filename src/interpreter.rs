@@ -1,13 +1,12 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::{Expr, ExprIdx, Parser, Stmt, StmtIdx, Tok};
+use crate::{ExprIdx, Node, Parser, StmtIdx, Tok};
 
 #[derive(Clone, Debug)]
 enum Value {
     None,
     Int(i64),
     Str(String),
-    #[allow(unused)]
     Flt(f64),
     To(i64, i64),
     Paren(Vec<Value>), // fn args (or perhaps tuple)
@@ -69,12 +68,9 @@ impl<'a> Interpreter<'a> {
                 panic!("expected cond bool, got: {cond_val:?}")
             }
         };
-        match &self.parser.stmts[stmt_idx] {
-            Stmt::Expr(_) => {
-                let expr_val = self.expr(stmt_idx);
-                self.add_local(stmt_idx, expr_val)
-            }
-            Stmt::Ret(ret) => {
+        let stmt = &self.parser.nodes[stmt_idx];
+        match stmt {
+            Node::Ret(ret) => {
                 let ret_val = if let Some(ret) = ret {
                     self.expr(*ret)
                 } else {
@@ -84,13 +80,13 @@ impl<'a> Interpreter<'a> {
                 self.clear_locals();
                 return true;
             }
-            Stmt::Block(stmts) => self.block(&stmts),
-            Stmt::While(cond, block) => {
+            Node::Block(stmts) => self.block(&stmts),
+            Node::While(cond, block) => {
                 while eval_cond(self, *cond) {
                     self.stmt(*block);
                 }
             }
-            Stmt::For(to, idx, block) => {
+            Node::For(to, idx, block) => {
                 let to_val = self.expr(*to);
                 let (start, end) = if let Value::To(start, end) = to_val {
                     (start, end)
@@ -107,14 +103,26 @@ impl<'a> Interpreter<'a> {
                     }
                 }
             }
-            Stmt::If(cond, block, else_block) => {
+            Node::If(cond, block, else_block) => {
                 if eval_cond(self, *cond) {
                     self.stmt(*block);
                 } else if let Some(else_block) = else_block {
                     self.stmt(*else_block);
                 }
             }
-            Stmt::Fn(name, _, _) => self.add_local(*name, Value::Fn(stmt_idx)),
+            Node::Fn(name, _, _) => self.add_local(*name, Value::Fn(stmt_idx)),
+            // exprs
+            Node::Int(_)
+            | Node::Flt(_)
+            | Node::Str(_)
+            | Node::Id(_)
+            | Node::Paren(_)
+            | Node::Comma(_)
+            | Node::Op(..)
+            | Node::FnCall(..) => {
+                let expr_val = self.expr(stmt_idx);
+                self.add_local(stmt_idx, expr_val)
+            }
         }
         false
     }
@@ -168,7 +176,7 @@ impl<'a> Interpreter<'a> {
                 return value;
             }
         }
-        if let Stmt::Expr(Expr::Id(id)) = &self.parser.stmts[id_expr] {
+        if let Node::Id(id) = &self.parser.nodes[id_expr] {
             panic!("undefined var: {id}")
         } else {
             panic!("stmt idx {id_expr} not in parser's stmts")
@@ -176,24 +184,20 @@ impl<'a> Interpreter<'a> {
     }
 
     fn expr(&mut self, expr_idx: ExprIdx) -> Value {
-        let expr = if let Stmt::Expr(expr) = &self.parser.stmts[expr_idx] {
-            expr
-        } else {
-            panic!("failed to eval, expr not found")
-        };
+        let expr = &self.parser.nodes[expr_idx];
         match expr {
-            Expr::Int(int) => Value::Int(*int),
-            Expr::Flt(flt) => Value::Flt(*flt),
-            Expr::Str(str) => Value::Str(str.clone()),
-            Expr::Id(_) => self.get_or_add_local(expr_idx, Value::None),
-            Expr::Paren(expr) => {
+            Node::Int(int) => Value::Int(*int),
+            Node::Flt(flt) => Value::Flt(*flt),
+            Node::Str(str) => Value::Str(str.clone()),
+            Node::Id(_) => self.get_or_add_local(expr_idx, Value::None),
+            Node::Paren(expr) => {
                 if let Some(expr) = expr {
                     self.expr(*expr)
                 } else {
                     Value::None
                 }
             }
-            Expr::Comma(exprs) => {
+            Node::Comma(exprs) => {
                 let mut expr_vals = vec![];
                 for expr in exprs {
                     let expr_val = self.expr(*expr);
@@ -205,7 +209,7 @@ impl<'a> Interpreter<'a> {
                     Value::Paren(expr_vals)
                 }
             }
-            Expr::Op(lhs_idx, rhs_ops) => {
+            Node::Op(lhs_idx, rhs_ops) => {
                 // example 1: a + b * c * d + e
                 // sort pairs by precedence: [b * c, c * d, a + b, d + e]
                 // eval: b = b * c, c = None
@@ -253,23 +257,31 @@ impl<'a> Interpreter<'a> {
             }
             // checks fn name if it's built-in calls it
             // else calls locally defined fn with evaluated paren args
-            Expr::FnCall(id, paren) => {
-                let paren_args = match &self.parser.stmts[*paren] {
-                    Stmt::Expr(Expr::Paren(expr)) => {
-                        if let Some(expr) = expr {
-                            match &self.parser.stmts[*expr] {
-                                Stmt::Expr(Expr::Comma(args)) => args.clone(),
-                                Stmt::Expr(_) => vec![*expr],
+            Node::FnCall(id, paren) => {
+                let paren_args = match &self.parser.nodes[*paren] {
+                    Node::Paren(expr_idx) => {
+                        if let Some(expr_idx) = expr_idx {
+                            let expr = &self.parser.nodes[*expr_idx];
+                            match expr {
+                                Node::Comma(args) => args.clone(),
+                                // other exprs
+                                Node::Int(_)
+                                | Node::Flt(_)
+                                | Node::Str(_)
+                                | Node::Id(_)
+                                | Node::Paren(_)
+                                | Node::Op(..)
+                                | Node::FnCall(..) => vec![*expr_idx],
                                 _ => panic!("stmt is not comma args"),
                             }
                         } else {
                             vec![]
                         }
                     }
-                    Stmt::Expr(Expr::Comma(args)) => args.clone(),
+                    Node::Comma(args) => args.clone(),
                     _ => panic!("expected [() | (args,) | args,] for fn call"),
                 };
-                if let Stmt::Expr(Expr::Id(fn_name)) = &self.parser.stmts[*id] {
+                if let Node::Id(fn_name) = &self.parser.nodes[*id] {
                     // built-in functions
                     match fn_name.as_str() {
                         "say" => {
@@ -333,14 +345,14 @@ impl<'a> Interpreter<'a> {
                             let fn_idx = *if let Value::Fn(fn_idx) = self.local(*id) {
                                 fn_idx
                             } else {
-                                if let Stmt::Expr(Expr::Id(fn_name)) = &self.parser.stmts[*id] {
+                                if let Node::Id(fn_name) = &self.parser.nodes[*id] {
                                     panic!("{fn_name:?} is not callable")
                                 } else {
-                                    panic!("{:?} is not fn name", self.parser.stmts[*id])
+                                    panic!("{:?} is not fn name", self.parser.nodes[*id])
                                 }
                             };
-                            let fn_ = &self.parser.stmts[fn_idx];
-                            if let Stmt::Fn(_id, fn_args, block) = fn_ {
+                            let fn_ = &self.parser.nodes[fn_idx];
+                            if let Node::Fn(_id, fn_args, block) = fn_ {
                                 for (paren_arg, fn_arg) in paren_args.iter().zip(fn_args) {
                                     let arg_val = self.expr(*paren_arg);
                                     self.add_local(*fn_arg, arg_val);
@@ -357,9 +369,10 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                 } else {
-                    panic!("expected fn id, got {:?}", &self.parser.stmts[*id])
+                    panic!("expected fn id, got {:?}", &self.parser.nodes[*id])
                 }
             }
+            _ => panic!("expected expr, got {:?}", expr),
         }
     }
 
@@ -523,7 +536,7 @@ impl<'a> Interpreter<'a> {
             use Tok::*;
             match op {
                 If | Else | While | For | Fn | Ret | OpenParen | CloseParen | Comma | Num | Flt
-                | Str | Id | Newline | Indent | Unk | End => {
+                | Str | Id | Newline | Indent | Space | Unk | End => {
                     panic!("invalid op: {op}")
                 }
                 To => to(&lhs, &rhs),

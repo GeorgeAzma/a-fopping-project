@@ -38,7 +38,7 @@ pub fn set_panic_hook() {
     std::panic::set_hook(Box::new(|panic_info| {
         let panic = |s: &str| {
             println!(
-                "panicked: \x1b[38;2;241;76;76m{}\x1b[0m\n\x1b[2m{}\x1b[0m",
+                "\x1b[38;2;241;76;76m{}\x1b[0m\n\x1b[2m{}\x1b[0m",
                 s,
                 backtrace(2)
             );

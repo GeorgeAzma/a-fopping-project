@@ -72,3 +72,4 @@ fn mul_table n
             msg(' ')
     say()
 mul_table(5)
+3 == 2

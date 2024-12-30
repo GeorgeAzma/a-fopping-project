@@ -44,6 +44,7 @@ pub enum Tok {
     Id,
     Newline,
     Indent,
+    Space,
     Unk,
     End,
 }
@@ -89,6 +90,7 @@ impl Display for Tok {
                 Id => "<id>",
                 Newline => "\\n",
                 Indent => "<indent>",
+                Space => "<space>",
                 Unk => "<unk>",
                 End => "<end>",
             }
@@ -122,11 +124,16 @@ impl Tok {
         )
     }
 
+    pub fn is_cond(self) -> bool {
+        use Tok::*;
+        matches!(self, Le | Ge | Eq | EqEq | Neq | Leq | Geq)
+    }
+
     pub fn precedence(self) -> u8 {
         use Tok::*;
         match self {
-            If | Else | While | For | Fn | Ret | Newline | Indent | Unk | End | Id | Str | Num
-            | Flt => 0,
+            If | Else | While | For | Fn | Ret | Newline | Indent | Space | Unk | End | Id
+            | Str | Num | Flt => 0,
             OpenParen | CloseParen => 1,
             Mul | Div | Mod => 2,
             Add | Sub => 3,
@@ -139,11 +146,25 @@ impl Tok {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Token {
     pub ty: Tok,
+    pub line: usize,
+    pub column: usize,
     pub start: usize,
     pub end: usize,
+}
+
+impl Default for Token {
+    fn default() -> Self {
+        Self {
+            ty: Tok::Unk,
+            line: 0,
+            column: 0,
+            start: 0,
+            end: 0,
+        }
+    }
 }
 
 impl Debug for Token {
@@ -153,28 +174,41 @@ impl Debug for Token {
 }
 
 impl Token {
-    pub fn new(ty: Tok, start: usize, end: usize) -> Self {
-        Self { ty, start, end }
-    }
-
     pub fn len(&self) -> usize {
         self.end - self.start
+    }
+
+    fn next(&mut self, new_tok: Tok, new_len: usize) -> Token {
+        let len = self.len();
+        self.column += len;
+        self.start += len;
+        self.end = self.start + new_len;
+        if self.ty == Tok::Newline {
+            self.column = 0;
+            self.line += 1;
+        }
+        self.ty = new_tok;
+        self.clone()
+    }
+
+    fn skip(&mut self, chars: usize) {
+        self.column += chars;
+        self.start += chars;
+        self.end += chars;
     }
 }
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
     chars: Chars<'a>,
-    prev: Token,
-    pos: usize,
+    tok: Token,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(code: &'a str) -> Self {
         Self {
             chars: code.chars(),
-            prev: Token::new(Tok::Newline, 0, 0),
-            pos: 0,
+            tok: Token::default(),
         }
     }
 
@@ -190,79 +224,84 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_tok(&mut self) -> Token {
-        self.pos += self.prev.len();
-        let tok = if self.prev.ty == Tok::Newline {
+        let tok = if self.tok.ty == Tok::Newline {
             let mut spaces = 0;
             while let Some(' ') = self.chars.clone().next() {
                 spaces += 1;
                 self.chars.next();
             }
-            Token::new(Tok::Indent, self.pos, self.pos + spaces)
+            self.tok.next(Tok::Indent, spaces)
+        } else if self.tok == Default::default() {
+            self.tok.next(Tok::Indent, 0)
         } else {
             let c = self.chars.next();
             if let Some(c) = c {
                 match (c, self.chars.clone().next()) {
                     (' ' | '\r', _) => {
-                        self.pos += 1;
-                        self.prev = Token::new(Tok::Unk, 0, 0);
+                        self.tok.next(Tok::Space, 1);
                         self.next_tok()
                     }
-                    ('\n', _) => Token::new(Tok::Newline, self.pos, self.pos + 1),
+                    ('\n', _) => {
+                        if self.tok.ty == Tok::Indent {
+                            panic!("empty indent");
+                        }
+                        self.tok.next(Tok::Newline, 1)
+                    }
                     ('+', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::AddEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::AddEq, 2)
                     }
                     ('-', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::SubEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::SubEq, 2)
                     }
                     ('*', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::MulEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::MulEq, 2)
                     }
                     ('/', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::DivEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::DivEq, 2)
                     }
                     ('%', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::ModEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::ModEq, 2)
                     }
                     ('=', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::EqEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::EqEq, 2)
                     }
                     ('!', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::Neq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::Neq, 2)
                     }
                     ('<', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::Leq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::Leq, 2)
                     }
                     ('>', Some('=')) => {
                         self.chars.next();
-                        Token::new(Tok::Geq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::Geq, 2)
                     }
                     ('-', Some('>')) => {
                         self.chars.next();
-                        Token::new(Tok::To, self.pos, self.pos + 2)
+                        self.tok.next(Tok::To, 2)
                     }
                     ('=', Some('>')) => {
                         self.chars.next();
-                        Token::new(Tok::ToEq, self.pos, self.pos + 2)
+                        self.tok.next(Tok::ToEq, 2)
                     }
-                    ('+', _) => Token::new(Tok::Add, self.pos, self.pos + 1),
-                    ('-', _) => Token::new(Tok::Sub, self.pos, self.pos + 1),
-                    ('*', _) => Token::new(Tok::Mul, self.pos, self.pos + 1),
-                    ('/', _) => Token::new(Tok::Div, self.pos, self.pos + 1),
-                    ('%', _) => Token::new(Tok::Mod, self.pos, self.pos + 1),
-                    ('=', _) => Token::new(Tok::Eq, self.pos, self.pos + 1),
-                    ('<', _) => Token::new(Tok::Le, self.pos, self.pos + 1),
-                    ('>', _) => Token::new(Tok::Ge, self.pos, self.pos + 1),
-                    ('(', _) => Token::new(Tok::OpenParen, self.pos, self.pos + 1),
-                    (')', _) => Token::new(Tok::CloseParen, self.pos, self.pos + 1),
-                    (',', _) => Token::new(Tok::Comma, self.pos, self.pos + 1),
+                    ('+', _) => self.tok.next(Tok::Add, 1),
+                    ('-', _) => self.tok.next(Tok::Sub, 1),
+                    ('*', _) => self.tok.next(Tok::Mul, 1),
+                    ('/', _) => self.tok.next(Tok::Div, 1),
+                    ('%', _) => self.tok.next(Tok::Mod, 1),
+                    ('=', _) => self.tok.next(Tok::Eq, 1),
+                    ('<', _) => self.tok.next(Tok::Le, 1),
+                    ('>', _) => self.tok.next(Tok::Ge, 1),
+                    ('(', _) => self.tok.next(Tok::OpenParen, 1),
+                    (')', _) => self.tok.next(Tok::CloseParen, 1),
+                    (',', _) => self.tok.next(Tok::Comma, 1),
                     ('"', _) | ('\'', _) => {
                         let mut i = 0;
                         while let Some(c) = self.chars.next() {
@@ -271,20 +310,21 @@ impl<'a> Lexer<'a> {
                             }
                             i += 1;
                         }
-                        self.pos += 1; // exclude quote
-                        let tok = Token::new(Tok::Str, self.pos, self.pos + i);
-                        self.pos += 1; // exclude quote
+                        self.tok.skip(1); // exclude quote
+                        let tok = self.tok.next(Tok::Str, i);
+                        self.tok.skip(1); // exclude quote
                         tok
                     }
                     ('#', _) => {
+                        let mut skips = 1;
                         while let Some(c) = self.chars.clone().next() {
                             if c == '\n' {
                                 break;
                             }
                             self.chars.next();
-                            self.pos += 1;
+                            skips += 1;
                         }
-                        self.pos += 1;
+                        self.tok.skip(skips);
                         self.next_tok()
                     }
                     _ => {
@@ -295,7 +335,7 @@ impl<'a> Lexer<'a> {
                                 if next_ch.is_numeric() || next_ch == '.' {
                                     if next_ch == '.' {
                                         if is_flt {
-                                            panic!("float can only have single dot (.)");
+                                            panic!("float can only have 1 dot (.)");
                                         }
                                         is_flt = true;
                                     }
@@ -306,9 +346,9 @@ impl<'a> Lexer<'a> {
                                 }
                             }
                             if is_flt {
-                                Token::new(Tok::Flt, self.pos, self.pos + num_len)
+                                self.tok.next(Tok::Flt, num_len)
                             } else {
-                                Token::new(Tok::Num, self.pos, self.pos + num_len)
+                                self.tok.next(Tok::Num, num_len)
                             }
                         } else {
                             let mut id = String::from(c);
@@ -323,35 +363,28 @@ impl<'a> Lexer<'a> {
                             }
 
                             match id.as_str() {
-                                "if" => Token::new(Tok::If, self.pos, self.pos + id.len()),
-                                "else" => Token::new(Tok::Else, self.pos, self.pos + id.len()),
-                                "while" => Token::new(Tok::While, self.pos, self.pos + id.len()),
-                                "for" => Token::new(Tok::For, self.pos, self.pos + id.len()),
-                                "fn" => Token::new(Tok::Fn, self.pos, self.pos + id.len()),
-                                "ret" => Token::new(Tok::Ret, self.pos, self.pos + id.len()),
-                                str if !str.is_empty() => {
-                                    Token::new(Tok::Id, self.pos, self.pos + id.len())
-                                }
-                                _ => Token::new(Tok::Unk, self.pos, self.pos + id.len()),
+                                "if" => self.tok.next(Tok::If, id.len()),
+                                "else" => self.tok.next(Tok::Else, id.len()),
+                                "while" => self.tok.next(Tok::While, id.len()),
+                                "for" => self.tok.next(Tok::For, id.len()),
+                                "fn" => self.tok.next(Tok::Fn, id.len()),
+                                "ret" => self.tok.next(Tok::Ret, id.len()),
+                                str if !str.is_empty() => self.tok.next(Tok::Id, id.len()),
+                                _ => self.tok.next(Tok::Unk, id.len()),
                             }
                         }
                     }
                 }
             } else {
-                Token::new(Tok::End, self.pos, self.pos)
+                self.tok.next(Tok::End, 0)
             }
         };
-        self.prev = tok;
         tok
     }
 }
 
 impl Debug for Lexer<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?}",
-            self.clone().iter().map(|t| t).collect::<Vec<_>>()
-        )
+        write!(f, "{:?}", self.clone().iter().collect::<Vec<_>>())
     }
 }
